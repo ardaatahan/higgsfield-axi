@@ -10,7 +10,7 @@ Generate images and video via the Higgsfield API and get local file paths back (
 Credentials: set `HF_API_KEY_ID` and `HF_API_KEY_SECRET` (keys from https://cloud.higgsfield.ai), or write them as KEY=VALUE lines to `~/.config/higgsfield-axi/credentials`.
 
 ```
-catalog: 48 models (11 image, 37 video)
+catalog: "48 models (11 image, 37 video)"
 defaults: image=soul/standard video=veo3.1/fast out=./higgsfield-out
 help[4]:
   npx -y higgsfield-axi image "<prompt>" --aspect 16:9

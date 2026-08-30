@@ -47,6 +47,24 @@ describe("buildBody", () => {
     expect(() => buildBody(model, { prompt: "p", values: { num_images: "9" } })).toThrow(/<= 4/);
   });
 
+  it("coerces integer-enum params (duration, batch_size) to numbers, not strings", () => {
+    const video = findModel("kling-video/v2.5-turbo/pro/image-to-video");
+    const videoBody = buildBody(video, {
+      prompt: "p",
+      values: { duration: "10", image_url: "https://example.com/a.png" },
+    });
+    expect(videoBody["duration"]).toBe(10);
+    expect(typeof videoBody["duration"]).toBe("number");
+
+    const image = findModel("soul/reference");
+    const imageBody = buildBody(image, {
+      prompt: "p",
+      values: { batch_size: "4", image_reference_url: "https://example.com/a.png" },
+    });
+    expect(imageBody["batch_size"]).toBe(4);
+    expect(typeof imageBody["batch_size"]).toBe("number");
+  });
+
   it("fills required params from schema defaults", () => {
     const model = findModel("veo3.1");
     const body = buildBody(model, { prompt: "p", values: {} });
