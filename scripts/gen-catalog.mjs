@@ -55,9 +55,10 @@ function deref(schema) {
 }
 
 function paramType(prop) {
-  if (prop.enum) return "string";
   if (Array.isArray(prop.type)) return prop.type.find((t) => t !== "null") ?? "string";
-  return prop.type ?? "string";
+  if (prop.type) return prop.type;
+  if (prop.enum) return typeof prop.enum[0] === "number" ? "integer" : "string";
+  return "string";
 }
 
 const models = [];
@@ -77,7 +78,7 @@ for (const [path, ops] of Object.entries(spec.paths)) {
   const required = new Set(body.required ?? []);
   const params = [];
   for (const [name, rawProp] of Object.entries(body.properties ?? {})) {
-    const prop = rawProp.$ref || rawProp.items?.$ref ? rawProp : rawProp;
+    const prop = rawProp.$ref ? deref(rawProp) : rawProp;
     const p = {
       name,
       type: rawProp.items ? "array" : paramType(prop),

@@ -265,7 +265,7 @@ export const videoCommand: CommandModule = {
     setRole(model, values, "resolution", "--resolution", parsed.flags["resolution"]);
     setRole(model, values, "seed", "--seed", parsed.flags["seed"]);
     if (parsed.flags["audio"]) {
-      const p = roleParam(model, "audio") ?? model.params.find((x) => x.name === "generate_audio");
+      const p = roleParam(model, "audio");
       if (!p) {
         throw new UsageError(
           `model ${model.id} does not support --audio`,

@@ -369,7 +369,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "batch_size",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "1",
@@ -461,7 +461,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "batch_size",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "1",
@@ -930,7 +930,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",
@@ -972,7 +972,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",
@@ -1020,7 +1020,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",
@@ -1062,7 +1062,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",
@@ -1104,7 +1104,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",
@@ -1146,7 +1146,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",
@@ -1183,7 +1183,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",
@@ -1273,7 +1273,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "6",
@@ -1322,7 +1322,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "6",
@@ -1375,7 +1375,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "6",
@@ -1452,7 +1452,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "6",
@@ -1486,7 +1486,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "6",
@@ -1515,7 +1515,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "4",
@@ -1563,7 +1563,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "4",
@@ -1612,7 +1612,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "4",
@@ -1655,7 +1655,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "4",
@@ -2092,7 +2092,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",
@@ -2150,7 +2150,7 @@ export const MODELS: ModelEntry[] = [
       },
       {
         "name": "duration",
-        "type": "string",
+        "type": "integer",
         "required": false,
         "enum": [
           "5",

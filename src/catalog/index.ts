@@ -42,6 +42,7 @@ const ROLE_CANDIDATES: Record<string, string[]> = {
   resolution: ["resolution"],
   duration: ["duration"],
   seed: ["seed"],
+  audio: ["generate_audio"],
 };
 
 export function roleParam(model: ModelEntry, role: string): ModelParam | undefined {
