@@ -1,0 +1,4 @@
+node_modules/
+dist/
+higgsfield-out/
+.claude/

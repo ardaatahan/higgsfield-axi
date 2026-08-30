@@ -1,0 +1,50 @@
+{
+  "name": "higgsfield-axi",
+  "version": "0.1.0",
+  "description": "AXI-compliant CLI for the Higgsfield image/video generation API: generate media from the terminal and get local file paths back",
+  "type": "module",
+  "bin": {
+    "higgsfield-axi": "bin/higgsfield-axi.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "pretest": "npm run build",
+    "test": "vitest run",
+    "skill:gen": "node scripts/gen-skill.mjs",
+    "skill:check": "node scripts/gen-skill.mjs --check",
+    "prepare": "npm run build",
+    "catalog:gen": "node scripts/gen-catalog.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ardaatahan/higgsfield-axi.git"
+  },
+  "homepage": "https://github.com/ardaatahan/higgsfield-axi#readme",
+  "bugs": {
+    "url": "https://github.com/ardaatahan/higgsfield-axi/issues"
+  },
+  "keywords": [
+    "axi",
+    "cli",
+    "higgsfield",
+    "image-generation",
+    "video-generation",
+    "agent"
+  ]
+}
