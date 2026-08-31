@@ -4,11 +4,21 @@
 import type { CommandSpec } from "./spec.js";
 import { UsageError } from "../output/errors.js";
 
+export interface PassthroughFlag {
+  name: string;
+  value: string | boolean;
+}
+
 export interface Parsed {
   positionals: string[];
   flags: Record<string, string | boolean>;
-  /** Unrecognized --flags collected when spec.passthrough is true. */
-  passthrough: Record<string, string | boolean>;
+  /**
+   * Unrecognized --flags collected when spec.passthrough is true, in the order
+   * they were given. A list, not a map: repeating a flag (--image-references a
+   * --image-references b) is meaningful to the wrapped CLI, so every
+   * occurrence has to survive forwarding.
+   */
+  passthrough: PassthroughFlag[];
   help: boolean;
 }
 
@@ -29,7 +39,7 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
     if (f.default !== undefined) flags[f.name] = f.default;
   }
   const positionals: string[] = [];
-  const passthrough: Record<string, string | boolean> = {};
+  const passthrough: PassthroughFlag[] = [];
   let help = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -66,7 +76,7 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
             value = true;
           }
         }
-        passthrough[name] = value;
+        passthrough.push({ name, value });
         continue;
       }
       if (flagSpec.type === "boolean") {

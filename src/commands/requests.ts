@@ -8,7 +8,7 @@ import { emitKV, emitList, print } from "../output/toon.js";
 import { helpBlock } from "../output/suggest.js";
 import { hf } from "../hf/exec.js";
 import { downloadOutputs } from "../hf/download.js";
-import { isFailureStatus, parseJob, parseJsonLoose } from "../hf/job.js";
+import { isFailureStatus, parseJobOutput } from "../hf/job.js";
 import { DEFAULT_OUT_DIR, renderJobResult } from "./generate.js";
 
 function requireJobId(positionals: string[]): string {
@@ -28,7 +28,7 @@ export const statusCommand: CommandModule = {
   async run(parsed) {
     const id = requireJobId(parsed.positionals);
     const stdout = await hf(["generate", "get", id, "--json"]);
-    const job = parseJob(parseJsonLoose(stdout));
+    const job = parseJobOutput(stdout);
     const kv: Array<[string, unknown]> = [["job", job.jobId || id], ["status", job.status]];
     if (isFailureStatus(job.status)) kv.push(["error", job.status]);
     print(emitKV(kv));
@@ -62,7 +62,7 @@ export const waitCommand: CommandModule = {
     if (parsed.flags["interval"]) args.push("--interval", String(parsed.flags["interval"]));
     args.push("--json");
     const stdout = await hf(args);
-    const job = parseJob(parseJsonLoose(stdout));
+    const job = parseJobOutput(stdout);
     const outDir = String(parsed.flags["out"]);
     const files = !isFailureStatus(job.status) && job.urls.length > 0 ? await downloadOutputs(job.jobId || id, job.urls, outDir) : [];
     const { text, exitCode } = renderJobResult({ ...job, jobId: job.jobId || id }, files);

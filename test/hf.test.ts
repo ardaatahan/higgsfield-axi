@@ -151,6 +151,42 @@ describe("image generation", () => {
     ]);
   });
 
+  it("forwards every occurrence of a repeated passthrough flag, in order", async () => {
+    const r = await run([
+      "image",
+      "same scene at night",
+      "--image-references",
+      "./a.png",
+      "--image-references",
+      "./b.png",
+      "--no-wait",
+    ]);
+    expect(r.status).toBe(0);
+    expect(invocations()[0]).toEqual([
+      "generate",
+      "create",
+      "nano_banana_2",
+      "--prompt",
+      "same scene at night",
+      "--image-references",
+      "./a.png",
+      "--image-references",
+      "./b.png",
+      "--json",
+    ]);
+  });
+
+  it("fails loudly when the CLI's --json stdout is not job JSON, instead of reporting success", async () => {
+    const r = await run(["image", "a chair", "--no-wait"], {
+      MOCK_HF_JOB_RAW: "Warning: upgrade available\nSubmitted.",
+    });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+    expect(r.stdout).toContain("Submitted.");
+    expect(r.stdout).toContain("suggestion:");
+    expect(r.stdout).not.toContain("status: unknown");
+  });
+
   it("exits 1 and reports the failure when the job's terminal status indicates failure", async () => {
     const r = await run(["image", "a chair"], { MOCK_HF_JOB_STATUS: "failed" });
     expect(r.status).toBe(1);
@@ -230,6 +266,34 @@ describe("job lifecycle commands", () => {
     }
   });
 
+  it("downloads from result_url when the CLI reports an empty urls array", async () => {
+    let asset: AssetServer | undefined;
+    try {
+      asset = new AssetServer();
+      const base = await asset.start();
+      const png = Buffer.from("single-result-bytes");
+      asset.set("/out.png", "image/png", png);
+      const r = await run(["wait", "job-single"], {
+        MOCK_HF_JOB_URLS: JSON.stringify([]),
+        MOCK_HF_JOB_RESULT_URL: `${base}/out.png`,
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("files[1]{path,bytes}:");
+      const file = join(workDir, "higgsfield-out", "job-single.png");
+      expect(existsSync(file)).toBe(true);
+      expect(readFileSync(file)).toEqual(png);
+    } finally {
+      await asset?.stop();
+    }
+  });
+
+  it("status fails loudly when the CLI's --json stdout is not job JSON", async () => {
+    const r = await run(["status", "job-xyz"], { MOCK_HF_JOB_RAW: "not json at all" });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+    expect(r.stdout).toContain("not json at all");
+  });
+
   it("there is no cancel command (the upstream CLI does not expose one)", async () => {
     const r = await run(["cancel", "job-xyz"]);
     expect(r.status).toBe(2);
@@ -251,6 +315,41 @@ describe("models", () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("nano_banana_2");
     expect(invocations()[0]).toEqual(["model", "get", "nano_banana_2", "--json"]);
+  });
+
+  it("renders a model's nested params as a counted TOON table, not [object Object]", async () => {
+    const r = await run(["models", "nano_banana_2"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({
+        job_type: "nano_banana_2",
+        params: [
+          { name: "aspect_ratio", type: "string", required: false },
+          { name: "resolution", type: "string", required: true },
+        ],
+      }),
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toContain("[object Object]");
+    expect(r.stdout).toContain("job_type: nano_banana_2");
+    expect(r.stdout).toContain("params[2]{name,type,required}:");
+    expect(r.stdout).toContain("aspect_ratio,string,false");
+    expect(r.stdout).toContain("resolution,string,true");
+  });
+
+  it("keeps the counted list header when the catalog comes back wrapped in an object", async () => {
+    const r = await run(["models"], {
+      MOCK_HF_MODEL_LIST: JSON.stringify({
+        total: 2,
+        models: [
+          { job_type: "nano_banana_2", media_type: "image" },
+          { job_type: "veo3_1", media_type: "video" },
+        ],
+      }),
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toContain("[object Object]");
+    expect(r.stdout).toContain("total: 2");
+    expect(r.stdout).toContain("models[2]{job_type,media_type}:");
+    expect(r.stdout).toContain("veo3_1,video");
   });
 
   it("maps an unknown model id to a structured error", async () => {

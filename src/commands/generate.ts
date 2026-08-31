@@ -9,7 +9,7 @@ import { helpBlock } from "../output/suggest.js";
 import { hf } from "../hf/exec.js";
 import { downloadOutputs } from "../hf/download.js";
 import { DEFAULT_MODELS } from "../hf/defaults.js";
-import { isFailureStatus, parseJob, parseJsonLoose } from "../hf/job.js";
+import { isFailureStatus, parseJobOutput } from "../hf/job.js";
 
 export const DEFAULT_OUT_DIR = "higgsfield-out";
 
@@ -25,7 +25,7 @@ const COMMON_FLAGS: FlagSpec[] = [
 
 function buildCreateArgs(model: string, prompt: string, parsed: Parsed): string[] {
   const args = ["generate", "create", model, "--prompt", prompt];
-  for (const [name, value] of Object.entries(parsed.passthrough)) {
+  for (const { name, value } of parsed.passthrough) {
     args.push(`--${name}`);
     if (typeof value === "string") args.push(value);
   }
@@ -69,7 +69,7 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
   const prompt = parsed.positionals[0]!;
   const outDir = String(parsed.flags["out"]);
   const stdout = await hf(buildCreateArgs(model, prompt, parsed));
-  const job = parseJob(parseJsonLoose(stdout));
+  const job = parseJobOutput(stdout);
 
   if (parsed.flags["no-wait"]) {
     print(emitKV([["job", job.jobId], ["model", model], ["status", job.status]]));

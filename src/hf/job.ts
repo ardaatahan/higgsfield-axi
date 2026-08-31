@@ -3,6 +3,8 @@
 // does not document this shape; the field names below (job_id, status,
 // result_url, urls) come from the compiled binary's own JSON tags.
 
+import { AxiError } from "../output/errors.js";
+
 export interface JobResult {
   jobId: string;
   status: string;
@@ -24,10 +26,30 @@ export function parseJob(data: unknown): JobResult {
   const urls: string[] = [];
   if (Array.isArray(obj["urls"])) {
     for (const u of obj["urls"] as unknown[]) if (typeof u === "string") urls.push(u);
-  } else if (typeof obj["result_url"] === "string") {
+  }
+  if (urls.length === 0 && typeof obj["result_url"] === "string") {
     urls.push(obj["result_url"] as string);
   }
   return { jobId, status, urls };
+}
+
+const RAW_PREVIEW_LIMIT = 300;
+
+/**
+ * Parse a `--json` job payload, or fail loudly. Output the CLI never meant as
+ * job JSON must not be smoothed into a plausible-looking "unknown" success:
+ * the raw text travels in the error so the caller can see what came back.
+ */
+export function parseJobOutput(stdout: string): JobResult {
+  const data = parseJsonLoose(stdout);
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    const raw = stdout.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
+    throw new AxiError(
+      `higgsfield returned a malformed response: ${raw || "(no output)"}`,
+      "retry the command; if it persists, run the same `higgsfield generate` command directly to inspect its output",
+    );
+  }
+  return parseJob(data);
 }
 
 // The CLI does not publish a status enum, so failure is detected by keyword

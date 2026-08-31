@@ -61,9 +61,17 @@ if (cmd === "generate" && (sub === "create" || sub === "get" || sub === "wait"))
   if (id === "missing-job") {
     fail(`Unknown job "${id}".`, "Run: higgsfield generate list", 1);
   }
+  // MOCK_HF_JOB_RAW replaces the whole payload, so a test can emit stdout that
+  // is not job JSON at all (a banner, a spinner line, a changed shape).
+  if (process.env.MOCK_HF_JOB_RAW !== undefined) {
+    process.stdout.write(process.env.MOCK_HF_JOB_RAW);
+    process.exit(0);
+  }
   const status = process.env.MOCK_HF_JOB_STATUS ?? "completed";
   const urls = JSON.parse(process.env.MOCK_HF_JOB_URLS ?? "[]");
-  process.stdout.write(JSON.stringify({ job_id: id, job_type: sub === "create" ? rest[0] : undefined, status, urls }));
+  const payload = { job_id: id, job_type: sub === "create" ? rest[0] : undefined, status, urls };
+  if (process.env.MOCK_HF_JOB_RESULT_URL) payload.result_url = process.env.MOCK_HF_JOB_RESULT_URL;
+  process.stdout.write(JSON.stringify(payload));
   process.exit(0);
 }
 
