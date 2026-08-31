@@ -47,6 +47,13 @@ export function runHf(args: string[]): Promise<HfRun> {
   });
 }
 
+// The vendor binary formats its Hint: lines with its own program name, `hf`,
+// which no install actually puts on PATH (npm and brew ship `higgsfield`), so
+// self-references are rewritten to the binary this tool invokes.
+function rewriteHint(hint: string): string {
+  return hint.replace(/\bhf\b/g, HF_BIN);
+}
+
 /** The CLI prints "Error: ...\nHint: ..." to stderr on failure, any --json. */
 function parseHfError(stderr: string, code: number): AxiError {
   const lines = stderr
@@ -56,7 +63,7 @@ function parseHfError(stderr: string, code: number): AxiError {
   const errLine = lines.find((l) => l.startsWith("Error:"));
   const hintLine = lines.find((l) => l.startsWith("Hint:"));
   const message = errLine ? errLine.replace(/^Error:\s*/, "") : stderr.trim() || `higgsfield exited with code ${code}`;
-  const suggestion = hintLine ? hintLine.replace(/^Hint:\s*/, "") : undefined;
+  const suggestion = hintLine ? rewriteHint(hintLine.replace(/^Hint:\s*/, "")) : undefined;
   return new AxiError(message, suggestion);
 }
 

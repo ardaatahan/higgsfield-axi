@@ -187,14 +187,26 @@ describe("image generation", () => {
     expect(r.stdout).not.toContain("status: unknown");
   });
 
-  it("parses the job JSON even when the CLI prints progress lines before it", async () => {
-    const r = await run(["image", "a chair", "--no-wait"], {
-      MOCK_HF_JOB_RAW: `Submitting job...\nWaiting for job (10%)\n${JSON.stringify({ job_id: "job-noisy", status: "queued" })}\n`,
+  it("accepts one clean JSON job document and rejects every other stdout shape alike", async () => {
+    const job = { job_id: "job-clean", status: "queued" };
+    const clean = await run(["image", "a chair", "--no-wait"], {
+      MOCK_HF_JOB_RAW: `${JSON.stringify(job)}\n`,
     });
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain("job: job-noisy");
-    expect(r.stdout).toContain("status: queued");
-    expect(r.stdout).not.toContain("malformed");
+    expect(clean.status).toBe(0);
+    expect(clean.stdout).toContain("job: job-clean");
+    expect(clean.stdout).toContain("status: queued");
+
+    const rejected = {
+      array: JSON.stringify([job]),
+      trailingObject: `${JSON.stringify(job)}\n${JSON.stringify({ update_available: true })}`,
+      progressPrefixed: `Submitting job...\n${JSON.stringify(job)}`,
+      garbage: "Submitted.",
+    };
+    for (const raw of Object.values(rejected)) {
+      const r = await run(["image", "a chair", "--no-wait"], { MOCK_HF_JOB_RAW: raw });
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+    }
   });
 
   it("fails loudly when the job JSON parses but carries no identifiable job id", async () => {
@@ -218,6 +230,14 @@ describe("image generation", () => {
     expect(r.stdout).toContain("higgsfield-axi wait job-empty");
     expect(r.stdout).toContain("higgsfield-axi status job-empty");
     expect(r.stdout).not.toContain('higgsfield-axi image "<prompt>"');
+  });
+
+  it("explains that the prompt must come first when a forwarded flag swallowed it", async () => {
+    const r = await run(["image", "--enhance_prompt", "a red chair"]);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toContain("error: missing required argument <prompt>");
+    expect(r.stdout).toContain("put <prompt> first, before any flags");
+    expect(invocations()).toHaveLength(0);
   });
 
   it("exits 1 and reports the failure when the job's terminal status indicates failure", async () => {
@@ -351,6 +371,21 @@ describe("job lifecycle commands", () => {
     } finally {
       await asset?.stop();
     }
+  });
+
+  it("status on a failed job suggests re-generating instead of waiting", async () => {
+    const r = await run(["status", "job-f"], { MOCK_HF_JOB_STATUS: "failed" });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("error: failed");
+    expect(r.stdout).not.toContain("higgsfield-axi wait");
+    expect(r.stdout).toContain('higgsfield-axi image "<prompt>" --model <model-id>');
+    expect(r.stdout).toContain('higgsfield-axi video "<prompt>" --model <model-id>');
+  });
+
+  it("status on an unfinished job still suggests waiting", async () => {
+    const r = await run(["status", "job-q"], { MOCK_HF_JOB_STATUS: "queued" });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("higgsfield-axi wait job-q --out higgsfield-out");
   });
 
   it("wait falls back to the requested job id when the CLI's response omits it", async () => {
@@ -489,6 +524,14 @@ describe("models", () => {
     expect(other.stdout).toContain("higgsfield-axi models");
   });
 
+  it("rejects --kind combined with a model id instead of silently dropping it", async () => {
+    const r = await run(["models", "nano_banana_2", "--kind", "video"]);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toContain("error: --kind filters the model list and cannot be combined with model id 'nano_banana_2'");
+    expect(r.stdout).toContain("higgsfield-axi models --kind video");
+    expect(invocations()).toHaveLength(0);
+  });
+
   it("maps an unknown model id to a structured error", async () => {
     const r = await run(["models", "totally-bogus-model"]);
     expect(r.status).toBe(1);
@@ -511,7 +554,8 @@ describe("environment and error mapping", () => {
     const r = await run(["models"], { MOCK_HF_FAIL_WORKSPACE: "1" });
     expect(r.status).toBe(1);
     expect(r.stdout).toContain("error: No workspace selected.");
-    expect(r.stdout).toContain("suggestion: Run: hf workspace set <workspace_id>");
+    expect(r.stdout).toContain(`suggestion: Run: ${mockHf} workspace set <workspace_id>`);
+    expect(r.stdout).not.toContain("Run: hf workspace set");
   });
 
   it("never prints the access token anywhere, even when authenticated", async () => {

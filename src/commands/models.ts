@@ -2,6 +2,7 @@
 // model's parameters via `higgsfield model get <job-type>`.
 
 import type { CommandModule } from "../cli/router.js";
+import { UsageError } from "../output/errors.js";
 import { emitFromJson } from "../output/fromJson.js";
 import { helpBlock } from "../output/suggest.js";
 import { print } from "../output/toon.js";
@@ -54,6 +55,13 @@ export const modelsCommand: CommandModule = {
   },
   async run(parsed) {
     const id = parsed.positionals[0];
+    const kindFilter = parsed.flags["kind"] as string | undefined;
+    if (id !== undefined && kindFilter !== undefined) {
+      throw new UsageError(
+        `--kind filters the model list and cannot be combined with model id '${id}'`,
+        `run 'higgsfield-axi models ${id}' for that model, or 'higgsfield-axi models --kind ${kindFilter}' for the filtered list`,
+      );
+    }
     if (id !== undefined) {
       const stdout = await hf(["model", "get", id, "--json"]);
       print(emitFromJson("model", stdout));
@@ -61,9 +69,8 @@ export const modelsCommand: CommandModule = {
       return 0;
     }
 
-    const kind = parsed.flags["kind"] as string | undefined;
     const args = ["model", "list"];
-    if (kind) args.push(`--${kind}`);
+    if (kindFilter) args.push(`--${kindFilter}`);
     args.push("--json");
     const stdout = await hf(args);
     print(emitFromJson("models", stdout));

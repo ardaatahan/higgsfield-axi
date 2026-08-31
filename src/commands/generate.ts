@@ -95,7 +95,7 @@ export const imageCommand: CommandModule = {
   spec: {
     name: "image",
     summary: "Generate images via the Higgsfield CLI (downloads results by default)",
-    args: [{ name: "prompt", required: true, description: "text prompt for the image" }],
+    args: [{ name: "prompt", required: true, description: "text prompt for the image; give it first, before any flags" }],
     flags: [
       { name: "model", type: "string", description: `image model job_type (default ${DEFAULT_MODELS.image})` },
       ...COMMON_FLAGS,
@@ -118,7 +118,7 @@ export const videoCommand: CommandModule = {
   spec: {
     name: "video",
     summary: "Generate video via the Higgsfield CLI (downloads results by default)",
-    args: [{ name: "prompt", required: true, description: "text prompt for the video" }],
+    args: [{ name: "prompt", required: true, description: "text prompt for the video; give it first, before any flags" }],
     flags: [
       { name: "model", type: "string", description: `video model job_type (default ${DEFAULT_MODELS.video})` },
       ...COMMON_FLAGS,

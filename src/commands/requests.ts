@@ -29,13 +29,20 @@ export const statusCommand: CommandModule = {
     const id = requireJobId(parsed.positionals);
     const stdout = await hf(["generate", "get", id, "--json"]);
     const job = parseJobOutput(stdout, id);
+    const failed = isFailureStatus(job.status);
     const kv: Array<[string, unknown]> = [["job", job.jobId], ["status", job.status]];
-    if (isFailureStatus(job.status)) kv.push(["error", job.status]);
+    if (failed) kv.push(["error", job.status]);
     print(emitKV(kv));
     if (job.urls.length > 0) {
       print(emitList("outputs", job.urls.map((url) => ({ url })), ["url"]));
     }
-    print(helpBlock([`higgsfield-axi wait ${id} --out ${DEFAULT_OUT_DIR}`]));
+    print(
+      helpBlock(
+        failed
+          ? ['higgsfield-axi image "<prompt>" --model <model-id>', 'higgsfield-axi video "<prompt>" --model <model-id>']
+          : [`higgsfield-axi wait ${id} --out ${DEFAULT_OUT_DIR}`],
+      ),
+    );
     return 0;
   },
 };

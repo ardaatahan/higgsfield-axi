@@ -11,54 +11,11 @@ export interface JobResult {
   urls: string[];
 }
 
-// Spans of the top-level {...} objects in `text`, string literals respected.
-function objectSpans(text: string): Array<[number, number]> {
-  const spans: Array<[number, number]> = [];
-  let depth = 0;
-  let start = -1;
-  let inString = false;
-  let escaped = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i]!;
-    if (inString) {
-      if (escaped) escaped = false;
-      else if (ch === "\\") escaped = true;
-      else if (ch === '"') inString = false;
-      continue;
-    }
-    if (ch === '"') inString = true;
-    else if (ch === "{") {
-      if (depth === 0) start = i;
-      depth++;
-    } else if (ch === "}") {
-      if (depth > 0 && --depth === 0 && start >= 0) {
-        spans.push([start, i + 1]);
-        start = -1;
-      }
-    }
-  }
-  return spans;
-}
-
-/**
- * Parse the CLI's stdout as JSON. `generate wait` documents progress output
- * (`-q, --quiet`) and `generate create --wait` has no such switch, so if the
- * whole text is not one JSON document, the last complete top-level object in
- * it is tried before giving up.
- */
+/** Parse the CLI's `--json` stdout, which is one JSON document or nothing. */
 export function parseJsonLoose(text: string): unknown {
   try {
-    return JSON.parse(text);
+    return JSON.parse(text.trim());
   } catch {
-    const spans = objectSpans(text);
-    for (let i = spans.length - 1; i >= 0; i--) {
-      const [from, to] = spans[i]!;
-      try {
-        return JSON.parse(text.slice(from, to));
-      } catch {
-        continue;
-      }
-    }
     return undefined;
   }
 }

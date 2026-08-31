@@ -122,9 +122,12 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
     const required = (spec.args ?? []).filter((a) => a.required);
     if (positionals.length < required.length) {
       const missing = required[positionals.length]!;
+      const example = spec.examples[0] ?? `run '${spec.name} --help'`;
       throw new UsageError(
         `missing required argument <${missing.name}>${forScope(spec)}`,
-        spec.examples[0] ?? `run '${spec.name} --help'`,
+        spec.passthrough && positionals.length === 0
+          ? `put <${missing.name}> first, before any flags - a forwarded flag takes the next token as its value: ${example}`
+          : example,
       );
     }
   }
