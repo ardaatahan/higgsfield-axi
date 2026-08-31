@@ -1,46 +1,56 @@
-// `status`, `wait`, `cancel` - request lifecycle commands.
+// `status` and `wait` - job lifecycle commands mapped onto the Higgsfield
+// CLI's `generate get` / `generate wait`. There is no `cancel`: the upstream
+// CLI does not expose one (verified via `higgsfield generate --help`).
 
 import type { CommandModule } from "../cli/router.js";
-import { UsageError } from "../output/errors.js";
+import { UsageError, retryHint } from "../output/errors.js";
 import { emitKV, emitList, print } from "../output/toon.js";
-import { helpBlock } from "../output/suggest.js";
-import { apiRequest, HttpStatusError } from "../api/http.js";
-import { getStatus, pollUntilTerminal } from "../api/poll.js";
-import { isTerminal, outputUrls } from "../api/status.js";
-import { downloadOutputs } from "../api/download.js";
-import { DEFAULT_OUT_DIR, renderTerminal } from "./generate.js";
+import { helpBlock, waitSuggestion } from "../output/suggest.js";
+import { hf } from "../hf/exec.js";
+import { downloadOutputs } from "../hf/download.js";
+import { isFailureStatus, isSafeJobId, parseJobOutput } from "../hf/job.js";
+import { DEFAULT_OUT_DIR, renderJobResult } from "./generate.js";
 
-function requireRequestId(positionals: string[]): string {
+function requireJobId(positionals: string[]): string {
   const id = positionals[0];
-  if (!id) throw new UsageError("missing required argument <request-id>");
+  if (!id) throw new UsageError("missing required argument <job-id>");
+  if (!isSafeJobId(id)) {
+    throw new UsageError(
+      `invalid job id '${id}'`,
+      "a job id contains only letters, digits, '.', '-' and '_' - copy it from the id this tool printed when the job was submitted",
+    );
+  }
   return id;
 }
 
 export const statusCommand: CommandModule = {
   spec: {
     name: "status",
-    summary: "Show a request's current state and output URLs (no download)",
-    args: [{ name: "request-id", required: true, description: "id returned when the request was submitted" }],
+    summary: "Show a job's current state and output URLs (no download)",
+    args: [{ name: "job-id", required: true, description: "id returned when the job was submitted" }],
     flags: [],
     examples: ["higgsfield-axi status d7e6c0f3-6699-4f6c-bb45-2ad7fd9158ff"],
   },
   async run(parsed) {
-    const id = requireRequestId(parsed.positionals);
-    const status = await getStatus(id);
-    const kv: Array<[string, unknown]> = [
-      ["request", status.request_id],
-      ["status", status.status],
-    ];
-    if (status.error) kv.push(["error", status.error]);
+    const id = requireJobId(parsed.positionals);
+    const args = ["generate", "get", id, "--json"];
+    const stdout = await hf(args);
+    const job = parseJobOutput(stdout, {
+      knownId: id,
+      malformedSuggestion: retryHint(`higgsfield ${args.join(" ")}`),
+    });
+    const failed = isFailureStatus(job.status);
+    const kv: Array<[string, unknown]> = [["job", job.jobId], ["status", job.status]];
+    if (failed) kv.push(["job_error", job.status]);
     print(emitKV(kv));
-    const urls = outputUrls(status);
-    if (urls.length > 0) {
-      print(emitList("outputs", urls.map((url) => ({ url })), ["url"]));
-    }
-    const next = isTerminal(status.status)
-      ? [`higgsfield-axi wait ${id} --out ${DEFAULT_OUT_DIR}`]
-      : [`higgsfield-axi wait ${id} --out ${DEFAULT_OUT_DIR}`, `higgsfield-axi cancel ${id}`];
-    print(helpBlock(next));
+    print(emitList("outputs", job.urls.map((url) => ({ url })), ["url"]));
+    print(
+      helpBlock(
+        failed
+          ? ['higgsfield-axi image "<prompt>" --model <model-id>', 'higgsfield-axi video "<prompt>" --model <model-id>']
+          : [waitSuggestion(id, DEFAULT_OUT_DIR)],
+      ),
+    );
     return 0;
   },
 };
@@ -48,11 +58,12 @@ export const statusCommand: CommandModule = {
 export const waitCommand: CommandModule = {
   spec: {
     name: "wait",
-    summary: "Poll a request to a terminal state and download its outputs",
-    args: [{ name: "request-id", required: true, description: "id returned when the request was submitted" }],
+    summary: "Poll a job until it finishes and download its outputs",
+    args: [{ name: "job-id", required: true, description: "id returned when the job was submitted" }],
     flags: [
       { name: "out", type: "string", default: DEFAULT_OUT_DIR, description: "directory for downloaded outputs" },
-      { name: "timeout", type: "string", default: "900", description: "max seconds to wait" },
+      { name: "timeout", type: "string", description: "max duration to wait, e.g. 20m (default 10m)" },
+      { name: "interval", type: "string", description: "poll interval, e.g. 5s (default 3s)" },
     ],
     examples: [
       "higgsfield-axi wait d7e6c0f3-6699-4f6c-bb45-2ad7fd9158ff",
@@ -60,62 +71,20 @@ export const waitCommand: CommandModule = {
     ],
   },
   async run(parsed) {
-    const id = requireRequestId(parsed.positionals);
-    const timeoutSec = Number(parsed.flags["timeout"]);
-    if (!Number.isFinite(timeoutSec) || timeoutSec <= 0) {
-      throw new UsageError("--timeout must be a positive number of seconds", "example: --timeout 600");
-    }
+    const id = requireJobId(parsed.positionals);
+    const args = ["generate", "wait", id];
+    if (parsed.flags["timeout"]) args.push("--timeout", String(parsed.flags["timeout"]));
+    if (parsed.flags["interval"]) args.push("--interval", String(parsed.flags["interval"]));
+    args.push("--quiet", "--json");
+    const stdout = await hf(args);
+    const job = parseJobOutput(stdout, {
+      knownId: id,
+      malformedSuggestion: retryHint(`higgsfield ${args.join(" ")}`),
+    });
     const outDir = String(parsed.flags["out"]);
-    const status = await pollUntilTerminal(id, timeoutSec * 1000);
-    const files = status.status === "completed" ? await downloadOutputs(status, outDir) : [];
-    const { text, exitCode } = renderTerminal(status, files);
+    const files = !isFailureStatus(job.status) && job.urls.length > 0 ? await downloadOutputs(job.jobId, job.urls, outDir) : [];
+    const { text, exitCode } = renderJobResult(job, files);
     print(text);
     return exitCode;
-  },
-};
-
-export const cancelCommand: CommandModule = {
-  spec: {
-    name: "cancel",
-    summary: "Cancel a queued request (started requests can no longer be canceled)",
-    args: [{ name: "request-id", required: true, description: "id returned when the request was submitted" }],
-    flags: [],
-    examples: ["higgsfield-axi cancel d7e6c0f3-6699-4f6c-bb45-2ad7fd9158ff"],
-  },
-  async run(parsed) {
-    const id = requireRequestId(parsed.positionals);
-    try {
-      await apiRequest("POST", `/requests/${id}/cancel`, { expectBody: false });
-    } catch (err) {
-      // Idempotent no-op: a request that already reached a terminal state
-      // cannot be canceled; report the actual state instead of failing.
-      if (err instanceof HttpStatusError && err.status === 400) {
-        const status = await getStatus(id);
-        if (isTerminal(status.status)) {
-          print(
-            emitKV([
-              ["request", id],
-              ["status", status.status],
-              ["note", "already terminal; nothing to cancel"],
-            ]),
-          );
-          return 0;
-        }
-        throw new HttpStatusError(
-          400,
-          `request ${id} has already started and can no longer be canceled`,
-          `watch it finish with: higgsfield-axi wait ${id}`,
-        );
-      }
-      throw err;
-    }
-    print(
-      emitKV([
-        ["request", id],
-        ["status", "canceled"],
-      ]),
-    );
-    print(helpBlock([`higgsfield-axi status ${id}`]));
-    return 0;
   },
 };

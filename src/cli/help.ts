@@ -33,6 +33,10 @@ export function renderHelp(tool: string, spec: CommandSpec): string {
   flagRows.push({ flag: "--help", default: "", description: "show this help" });
   parts.push(emitList("flags", flagRows, ["flag", "default", "description"]));
 
+  if (spec.passthroughHint) {
+    parts.push(emitBlock("passthrough", [spec.passthroughHint]));
+  }
+
   if (spec.examples.length > 0) {
     parts.push(emitBlock("examples", spec.examples));
   }

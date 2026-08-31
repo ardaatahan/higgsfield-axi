@@ -1,24 +1,31 @@
 ---
 name: higgsfield-axi
-description: "Generate images and video via the Higgsfield API and get local file paths back"
+description: "Generate images, video, and more by wrapping the official Higgsfield CLI, and get local file paths back"
 ---
 
 # higgsfield-axi
 
-Generate images and video via the Higgsfield API and get local file paths back (built against AXI spec axi/1.0-2026-07). Run the commands below with npx — no install needed.
+Generate images, video, and more by wrapping the official Higgsfield CLI, and get local file paths back (built against AXI spec axi/1.0-2026-07). This tool shells out to the official [Higgsfield CLI](https://github.com/higgsfield-ai/cli) - it does not call the Higgsfield API directly.
 
-Credentials: set `HF_API_KEY_ID` and `HF_API_KEY_SECRET` (keys from https://cloud.higgsfield.ai), or write them as KEY=VALUE lines to `~/.config/higgsfield-axi/credentials`.
+Install and authenticate the official CLI first (one-time setup this tool depends on):
+
+```sh
+npm install -g @higgsfield/cli   # or: brew install higgsfield-ai/tap/higgsfield
+higgsfield auth login
+```
+
+Then run higgsfield-axi with npx - no separate install needed:
 
 ```
-catalog: "48 models (11 image, 37 video)"
-defaults: image=soul/standard video=veo3.1/fast out=./higgsfield-out
+higgsfield-axi: Generate images, video, and more by wrapping the official Higgsfield CLI, and get local file paths back
+catalog: "55+ models across image, video, 3D, and audio - see `higgsfield-axi models` or MODELS.md upstream"
 help[4]:
-  npx -y higgsfield-axi image "<prompt>" --aspect 16:9
-  npx -y higgsfield-axi video "<prompt>" --image <file-or-url>
+  npx -y higgsfield-axi image "<prompt>" --model nano_banana_2
+  npx -y higgsfield-axi video "<prompt>" --model veo3_1
   npx -y higgsfield-axi models --kind image
-  npx -y higgsfield-axi wait <request-id>
+  npx -y higgsfield-axi wait <job-id>
 ```
 
-`image`/`video` submit a generation, poll to completion, download outputs, and print local file paths (`--no-wait` to just get the request id). `--ref`/`--image` accept local files (uploaded automatically) or URLs. `models <model-id>` shows every parameter a model accepts; pass extras with `--params '{...}'`.
+`image`/`video` shell out to `higgsfield generate create <model> --prompt ...`, wait for completion by default, download outputs, and print local file paths (`--no-wait` to just get the job id back). Any flag not shown in `--help` is forwarded verbatim to that underlying call (e.g. `--aspect_ratio`, `--resolution`, `--image-references`, `--duration`), except `--prompt`, `--wait` and `--json`, which higgsfield-axi sets itself and rejects if passed - inspect a model's accepted parameters with `higgsfield-axi models <model-id>` or `higgsfield model get <model-id>`.
 
-Every command supports `--help`. Exit codes: 0 success/no-op, 1 error, 2 usage error. All output is TOON on stdout.
+Every command supports `--help`. Exit codes: 0 success/no-op, 1 error, 2 usage error. All output is TOON on stdout. There is no `cancel` command - the underlying Higgsfield CLI does not expose one.

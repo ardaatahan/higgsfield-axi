@@ -1,101 +1,80 @@
-// `models` - list the catalog; `models <id>` - full parameter detail.
+// `models` - list the live catalog via `higgsfield model list`, or show one
+// model's parameters via `higgsfield model get <job-type>`.
 
 import type { CommandModule } from "../cli/router.js";
-import { MODELS, findModel, requiredInputs } from "../catalog/index.js";
 import { UsageError } from "../output/errors.js";
-import { emitKV, emitList, print } from "../output/toon.js";
+import { emitFromJson } from "../output/fromJson.js";
 import { helpBlock } from "../output/suggest.js";
+import { print } from "../output/toon.js";
+import { hf } from "../hf/exec.js";
 
-const LIST_FIELDS = ["id", "kind", "inputs", "family"];
-const ALL_FIELDS = [...LIST_FIELDS, "path", "params"];
+const KIND_VALUES = ["image", "video", "audio", "text"];
+
+// The model's media kind is read from `media`, believed to be the field name
+// the CLI emits: `media_type` appears nowhere in the compiled binary while a
+// single `media` json tag does. That is an inference from the binary, not
+// confirmed against live `model list`/`model get --json` output (no workspace
+// was available to check), which is why `media_type` stays on as a fallback
+// key - if the guess is wrong the kind simply reads as absent.
+function mediaKind(raw: string): string | undefined {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const record = data as Record<string, unknown>;
+  const media = record["media"] ?? record["media_type"];
+  if (typeof media !== "string") return undefined;
+  return media.trim().toLowerCase().split("/")[0] || undefined;
+}
+
+// Only image and video have a generate command here. A kind the tool cannot
+// generate must not be offered to either of them; an absent kind keeps both on
+// offer, since there is then nothing to tell them apart by.
+function modelNextSteps(id: string, kind: string | undefined): string[] {
+  if (kind === "image" || kind === "video") return [`higgsfield-axi ${kind} "<prompt>" --model ${id}`];
+  if (kind === undefined) {
+    return [`higgsfield-axi image "<prompt>" --model ${id}`, `higgsfield-axi video "<prompt>" --model ${id}`];
+  }
+  return KIND_VALUES.includes(kind) ? [`higgsfield-axi models --kind ${kind}`] : ["higgsfield-axi models"];
+}
 
 export const modelsCommand: CommandModule = {
   spec: {
     name: "models",
-    summary: "List available models, or show one model's parameters",
-    args: [{ name: "model-id", required: false, description: "show full parameter detail for one model" }],
-    flags: [
-      { name: "kind", type: "string", values: ["image", "video"], description: "filter by output kind" },
-      {
-        name: "fields",
-        type: "string",
-        default: LIST_FIELDS.join(","),
-        description: `comma-separated columns from: ${ALL_FIELDS.join(", ")}`,
-      },
-    ],
+    summary: "List models from the Higgsfield CLI's live catalog, or show one model's parameters",
+    args: [{ name: "model-id", required: false, description: "show accepted parameters for one model (job_type)" }],
+    flags: [{ name: "kind", type: "string", values: KIND_VALUES, description: "filter by media kind" }],
     examples: [
       "higgsfield-axi models",
       "higgsfield-axi models --kind video",
-      "higgsfield-axi models soul/standard",
+      "higgsfield-axi models nano_banana_2",
     ],
   },
-  run(parsed) {
+  async run(parsed) {
     const id = parsed.positionals[0];
+    const kindFilter = parsed.flags["kind"] as string | undefined;
+    if (id !== undefined && kindFilter !== undefined) {
+      throw new UsageError(
+        `--kind filters the model list and cannot be combined with model id '${id}'`,
+        `run 'higgsfield-axi models ${id}' for that model, or 'higgsfield-axi models --kind ${kindFilter}' for the filtered list`,
+      );
+    }
     if (id !== undefined) {
-      const model = findModel(id);
-      print(
-        emitKV([
-          ["model", model.id],
-          ["kind", model.kind],
-          ["family", model.family],
-          ["endpoint", model.path],
-        ]),
-      );
-      print(
-        emitList(
-          "params",
-          model.params.map((p) => ({
-            name: p.name,
-            type: p.type,
-            required: p.required ? "yes" : "no",
-            default: p.default === undefined ? "" : String(p.default),
-            values: p.enum
-              ? p.enum.join("|")
-              : [p.min !== undefined ? `min ${p.min}` : "", p.max !== undefined ? `max ${p.max}` : ""]
-                  .filter(Boolean)
-                  .join(" "),
-          })),
-          ["name", "type", "required", "default", "values"],
-        ),
-      );
-      const cmd = model.kind === "image" ? "image" : "video";
-      print(
-        helpBlock([
-          `higgsfield-axi ${cmd} "<prompt>" --model ${model.id}`,
-          `higgsfield-axi models --kind ${model.kind}`,
-        ]),
-      );
+      const getArgs = ["model", "get", id, "--json"];
+      const stdout = await hf(getArgs);
+      print(emitFromJson("model", stdout, `higgsfield ${getArgs.join(" ")}`));
+      print(helpBlock(modelNextSteps(id, mediaKind(stdout))));
       return 0;
     }
 
-    const fields = String(parsed.flags["fields"]).split(",").map((f) => f.trim());
-    for (const f of fields) {
-      if (!ALL_FIELDS.includes(f)) {
-        throw new UsageError(`unknown field '${f}' for --fields`, `valid fields: ${ALL_FIELDS.join(", ")}`);
-      }
-    }
-    const kind = parsed.flags["kind"] as string | undefined;
-    const rows = MODELS.filter((m) => kind === undefined || m.kind === kind);
-    if (rows.length === 0) {
-      print(`models: 0 ${kind ?? ""} models in the catalog`.replace(/\s+/g, " "));
-      print(helpBlock(["higgsfield-axi models"]));
-      return 0;
-    }
-    print(
-      emitList(
-        "models",
-        rows.map((m) => ({
-          id: m.id,
-          kind: m.kind,
-          family: m.family,
-          inputs: requiredInputs(m),
-          path: m.path,
-          params: m.params.map((p) => p.name).join(" "),
-        })),
-        fields,
-        { total: MODELS.length },
-      ),
-    );
+    const args = ["model", "list"];
+    if (kindFilter) args.push(`--${kindFilter}`);
+    args.push("--json");
+    const stdout = await hf(args);
+    print(emitFromJson("models", stdout, `higgsfield ${args.join(" ")}`));
     print(
       helpBlock([
         "higgsfield-axi models <model-id>",

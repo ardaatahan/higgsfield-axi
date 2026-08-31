@@ -1,284 +1,188 @@
-// `image` and `video` - submit a generation, then (by default) poll to a
-// terminal state, download outputs, and print local file paths.
+// `image` and `video` - build a `higgsfield generate create` invocation,
+// wait for completion by default, download outputs, and print local paths.
 
 import type { CommandModule } from "../cli/router.js";
 import type { Parsed } from "../cli/args.js";
 import type { FlagSpec } from "../cli/spec.js";
-import { AxiError, UsageError } from "../output/errors.js";
 import { emitKV, emitList, print } from "../output/toon.js";
-import { helpBlock } from "../output/suggest.js";
-import { DEFAULTS, buildBody, findModel, roleParam, type ModelEntry } from "../catalog/index.js";
-import { apiRequest } from "../api/http.js";
-import { pollUntilTerminal } from "../api/poll.js";
-import { asRequestStatus, outputUrls, type RequestStatus } from "../api/status.js";
-import { resolveMediaInput } from "../api/upload.js";
-import { downloadOutputs } from "../api/download.js";
+import { helpBlock, waitSuggestion } from "../output/suggest.js";
+import { HfExitError, hf } from "../hf/exec.js";
+import { UsageError } from "../output/errors.js";
+import { downloadOutputs } from "../hf/download.js";
+import { DEFAULT_MODELS } from "../hf/defaults.js";
+import { isFailureStatus, parseJobOutput } from "../hf/job.js";
 
 export const DEFAULT_OUT_DIR = "higgsfield-out";
-const DEFAULT_TIMEOUT_SEC = 900;
+
+const PASSTHROUGH_HINT =
+  "any other --flag value is forwarded to `higgsfield generate create <model>` (e.g. --aspect_ratio, --resolution, --duration, --image-references, --start-image, --end-image), except --prompt, --wait and --json, which higgsfield-axi sets itself and rejects if passed; inspect a model's accepted parameters with `higgsfield-axi models <model-id>`";
 
 const COMMON_FLAGS: FlagSpec[] = [
-  { name: "params", type: "string", description: "extra model parameters as a JSON object" },
+  { name: "wait-timeout", type: "string", description: "max wait duration while polling, e.g. 20m (default 10m)" },
+  { name: "wait-interval", type: "string", description: "poll interval while waiting, e.g. 5s (default 3s)" },
+  { name: "no-wait", type: "boolean", description: "submit only; print the job id without waiting" },
   { name: "out", type: "string", default: DEFAULT_OUT_DIR, description: "directory for downloaded outputs" },
-  { name: "no-wait", type: "boolean", description: "submit only; print the request id without polling" },
-  {
-    name: "timeout",
-    type: "string",
-    default: String(DEFAULT_TIMEOUT_SEC),
-    description: "max seconds to wait for completion",
-  },
-  { name: "seed", type: "string", description: "seed for reproducible generations (models that support it)" },
 ];
 
-function parseParamsFlag(raw: unknown): Record<string, unknown> {
-  if (raw === undefined) return {};
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(String(raw));
-  } catch {
-    throw new UsageError(
-      "--params must be a JSON object",
-      'example: --params \'{"style_id": "abc", "enhance_prompt": false}\'',
-    );
+const WAIT_TUNING_FLAGS = ["wait-timeout", "wait-interval"];
+
+// Flags this command sets itself on the `generate create` argv; forwarding a
+// second copy would leave the vendor to pick a winner, and for --prompt that
+// means billing a generation the caller did not ask for.
+const RESERVED_PASSTHROUGH = ["prompt", "wait", "json"];
+
+function buildCreateArgs(model: string, prompt: string, parsed: Parsed): string[] {
+  const args = ["generate", "create", model, "--prompt", prompt];
+  for (const { name, value } of parsed.passthrough) {
+    args.push(`--${name}`);
+    if (typeof value === "string") args.push(value);
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new UsageError("--params must be a JSON object", 'example: --params \'{"enhance_prompt": false}\'');
+  if (!parsed.flags["no-wait"]) {
+    args.push("--wait");
+    if (parsed.flags["wait-timeout"]) args.push("--wait-timeout", String(parsed.flags["wait-timeout"]));
+    if (parsed.flags["wait-interval"]) args.push("--wait-interval", String(parsed.flags["wait-interval"]));
   }
-  return parsed as Record<string, unknown>;
+  args.push("--json");
+  return args;
 }
 
-function parseTimeout(raw: unknown): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n) || n <= 0) {
-    throw new UsageError("--timeout must be a positive number of seconds", "example: --timeout 600");
-  }
-  return n * 1000;
+const CREATE_RECOVERY =
+  "the job may already have been created and billed - do not resubmit the same prompt; find it with `higgsfield generate list`, then run `higgsfield-axi wait <job-id>` or `higgsfield-axi status <job-id>`";
+
+function nextStepsAfterSubmit(jobId: string, outDir: string): string[] {
+  return [waitSuggestion(jobId, outDir), `higgsfield-axi status ${jobId}`];
 }
 
-/** Map a CLI flag to the model parameter filling the given role. */
-function setRole(
-  model: ModelEntry,
-  values: Record<string, unknown>,
-  role: string,
-  flag: string,
-  value: unknown,
-): void {
-  if (value === undefined) return;
-  const p = roleParam(model, role);
-  if (!p) {
-    throw new UsageError(
-      `model ${model.id} does not support ${flag}`,
-      `see its parameters with: higgsfield-axi models ${model.id}, or pick another model: higgsfield-axi models --kind ${model.kind}`,
-    );
-  }
-  values[p.name] = value;
-}
-
-async function resolveMediaRole(
-  model: ModelEntry,
-  mediaLists: Record<string, string[]>,
-  role: string,
-  flag: string,
-  raw: unknown,
-): Promise<void> {
-  if (raw === undefined) return;
-  const p = roleParam(model, role);
-  if (!p) {
-    throw new UsageError(
-      `model ${model.id} does not support ${flag}`,
-      `see its parameters with: higgsfield-axi models ${model.id}, or pick another model: higgsfield-axi models --kind ${model.kind}`,
-    );
-  }
-  const items = String(raw)
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (p.type !== "array" && items.length > 1) {
-    throw new UsageError(`model ${model.id} accepts a single ${flag} value`, `pass one file or URL`);
-  }
-  const urls: string[] = [];
-  for (const item of items) urls.push(await resolveMediaInput(item));
-  mediaLists[p.name] = urls;
-}
-
-function nextStepsAfterSubmit(status: RequestStatus, outDir: string): string[] {
-  return [
-    `higgsfield-axi wait ${status.request_id} --out ${outDir}`,
-    `higgsfield-axi status ${status.request_id}`,
-    `higgsfield-axi cancel ${status.request_id}`,
-  ];
-}
-
-export function renderTerminal(
-  status: RequestStatus,
+/** Shared by image/video submission and the `wait` command's terminal report. */
+export function renderJobResult(
+  job: { jobId: string; status: string },
   files: Array<{ path: string; bytes: number }>,
   model?: string,
 ): { text: string; exitCode: number } {
-  const kv: Array<[string, unknown]> = [["request", status.request_id]];
+  const kv: Array<[string, unknown]> = [["job", job.jobId]];
   if (model) kv.push(["model", model]);
-  kv.push(["status", status.status]);
+  kv.push(["status", job.status]);
 
-  if (status.status === "completed") {
-    const parts = [emitKV(kv)];
-    if (files.length > 0) {
-      parts.push(emitList("files", files, ["path", "bytes"]));
-    } else {
-      const urls = outputUrls(status);
-      parts.push(emitList("outputs", urls.map((url) => ({ url })), ["url"]));
-    }
-    return { text: parts.join("\n"), exitCode: 0 };
+  if (isFailureStatus(job.status)) {
+    kv.push(["error", job.status]);
+    return { text: emitKV(kv), exitCode: 1 };
   }
-  if (status.status === "canceled") {
-    return { text: emitKV(kv), exitCode: 0 };
-  }
-  const reason =
-    status.status === "nsfw"
-      ? "input or output was rejected by content moderation"
-      : status.error || "generation failed";
-  kv.push(["error", reason]);
-  return { text: emitKV(kv), exitCode: 1 };
+  const parts = [emitKV(kv), emitList("files", files, ["path", "bytes"])];
+  return { text: parts.join("\n"), exitCode: 0 };
 }
 
-export async function submitAndReport(
-  model: ModelEntry,
-  body: Record<string, unknown>,
-  parsed: Parsed,
-): Promise<number> {
+/**
+ * `generate create --wait` submits the job before it blocks polling, so a
+ * failure from that call - a wait timeout above all - can leave a job that
+ * exists and is billed. The vendor error carries no id, so the caller is told
+ * how to find the job instead of being left to resubmit it.
+ */
+async function submitJob(model: string, prompt: string, parsed: Parsed): Promise<string> {
+  try {
+    return await hf(buildCreateArgs(model, prompt, parsed));
+  } catch (err) {
+    if (parsed.flags["no-wait"] || !(err instanceof HfExitError)) throw err;
+    err.suggestion = err.suggestion ? `${err.suggestion}; ${CREATE_RECOVERY}` : CREATE_RECOVERY;
+    throw err;
+  }
+}
+
+async function submitAndReport(kind: "image" | "video", model: string, parsed: Parsed): Promise<number> {
+  if (parsed.positionals.length > 1) {
+    throw new UsageError(
+      `<prompt> must be a single argument for '${kind}', got ${parsed.positionals.length}`,
+      `quote the whole prompt: higgsfield-axi ${kind} "${parsed.positionals.join(" ")}"`,
+    );
+  }
+  const prompt = parsed.positionals[0]!;
+  const reserved = parsed.passthrough.filter((f) => RESERVED_PASSTHROUGH.includes(f.name)).map((f) => `--${f.name}`);
+  if (reserved.length > 0) {
+    throw new UsageError(
+      `${reserved.join(", ")} ${reserved.length > 1 ? "are" : "is"} set by higgsfield-axi and cannot be forwarded to '${kind}'`,
+      `pass the prompt as the first argument and control waiting with --no-wait/--wait-timeout/--wait-interval: higgsfield-axi ${kind} "<prompt>"`,
+    );
+  }
+  if (parsed.flags["no-wait"]) {
+    const tuning = WAIT_TUNING_FLAGS.filter((name) => parsed.flags[name] !== undefined);
+    if (tuning.length > 0) {
+      throw new UsageError(
+        `${tuning.map((name) => `--${name}`).join(" and ")} cannot be combined with --no-wait`,
+        `drop --no-wait to wait with that tuning, or drop ${tuning.map((name) => `--${name}`).join("/")} to submit without waiting`,
+      );
+    }
+  }
   const outDir = String(parsed.flags["out"]);
-  const timeoutMs = parseTimeout(parsed.flags["timeout"]);
-  const submitted = asRequestStatus(await apiRequest("POST", model.path, { body }));
+  const stdout = await submitJob(model, prompt, parsed);
+  const job = parseJobOutput(stdout, {
+    malformedSuggestion: CREATE_RECOVERY,
+    tolerateLeadingOutput: !parsed.flags["no-wait"],
+  });
 
   if (parsed.flags["no-wait"]) {
-    print(
-      emitKV([
-        ["request", submitted.request_id],
-        ["model", model.id],
-        ["status", submitted.status],
-      ]),
-    );
-    print(helpBlock(nextStepsAfterSubmit(submitted, outDir)));
+    print(emitKV([["job", job.jobId], ["model", model], ["status", job.status]]));
+    print(helpBlock(nextStepsAfterSubmit(job.jobId, outDir)));
     return 0;
   }
 
-  const terminal = await pollUntilTerminal(submitted.request_id, timeoutMs);
-  const files = terminal.status === "completed" ? await downloadOutputs(terminal, outDir) : [];
-  const { text, exitCode } = renderTerminal(terminal, files, model.id);
+  const files = !isFailureStatus(job.status) && job.urls.length > 0 ? await downloadOutputs(job.jobId, job.urls, outDir) : [];
+  const { text, exitCode } = renderJobResult(job, files, model);
   print(text);
-  if (exitCode === 0 && terminal.status === "completed") {
-    print(
-      helpBlock([
-        `higgsfield-axi ${model.kind} "<prompt>" --model ${model.id}`,
-        `higgsfield-axi models ${model.id}`,
-        "higgsfield-axi models --kind " + model.kind,
-      ]),
-    );
+  if (exitCode !== 0) {
+    print(helpBlock([`higgsfield-axi models ${model}`, `higgsfield-axi ${kind} "<prompt>" --model ${model}`]));
+    return exitCode;
   }
+  print(
+    helpBlock(
+      files.length === 0
+        ? nextStepsAfterSubmit(job.jobId, outDir)
+        : [`higgsfield-axi ${kind} "<prompt>" --model ${model}`, "higgsfield-axi models --kind " + kind],
+    ),
+  );
   return exitCode;
 }
 
 export const imageCommand: CommandModule = {
   spec: {
     name: "image",
-    summary: "Generate images from a prompt (downloads results by default)",
-    args: [{ name: "prompt", required: true, description: "text prompt for the image" }],
+    summary: "Generate images via the Higgsfield CLI (downloads results by default)",
+    args: [{ name: "prompt", required: true, description: "text prompt for the image; give it first, before any flags" }],
     flags: [
-      {
-        name: "model",
-        type: "string",
-        description: `image model id (default ${DEFAULTS.image}, or ${DEFAULTS.imageWithRef} when --ref is set)`,
-      },
-      { name: "ref", type: "string", description: "reference image(s): local file or URL, comma-separated for models that take several" },
-      { name: "aspect", type: "string", description: "aspect ratio, e.g. 16:9 (model-dependent)" },
-      { name: "resolution", type: "string", description: "output resolution (model-dependent, e.g. 2K)" },
-      { name: "n", type: "string", description: "number of images (models that support it)" },
+      { name: "model", type: "string", description: `image model job_type (default ${DEFAULT_MODELS.image})` },
       ...COMMON_FLAGS,
     ],
+    passthrough: true,
+    passthroughHint: PASSTHROUGH_HINT,
     examples: [
-      'higgsfield-axi image "minimal hero banner, pastel gradients" --aspect 16:9',
-      'higgsfield-axi image "same scene at night" --ref ./day.jpg',
-      'higgsfield-axi image "product shot" --model nano-banana --n 4 --no-wait',
+      'higgsfield-axi image "minimal hero banner, pastel gradients" --aspect_ratio 16:9',
+      'higgsfield-axi image "same scene at night" --image-references ./day.jpg',
+      'higgsfield-axi image "product shot" --model gpt_image_2 --no-wait',
     ],
   },
   async run(parsed) {
-    const modelId =
-      (parsed.flags["model"] as string | undefined) ??
-      (parsed.flags["ref"] !== undefined ? DEFAULTS.imageWithRef : DEFAULTS.image);
-    const model = findModel(modelId);
-    if (model.kind !== "image") {
-      throw new UsageError(
-        `${model.id} is a ${model.kind} model`,
-        `use: higgsfield-axi ${model.kind} "<prompt>" --model ${model.id}`,
-      );
-    }
-    const values: Record<string, unknown> = parseParamsFlag(parsed.flags["params"]);
-    setRole(model, values, "aspect", "--aspect", parsed.flags["aspect"]);
-    setRole(model, values, "resolution", "--resolution", parsed.flags["resolution"]);
-    setRole(model, values, "n", "--n", parsed.flags["n"]);
-    setRole(model, values, "seed", "--seed", parsed.flags["seed"]);
-    const mediaLists: Record<string, string[]> = {};
-    await resolveMediaRole(model, mediaLists, "ref", "--ref", parsed.flags["ref"]);
-    const body = buildBody(model, { prompt: parsed.positionals[0]!, values, mediaLists });
-    return submitAndReport(model, body, parsed);
+    const model = (parsed.flags["model"] as string | undefined) ?? DEFAULT_MODELS.image;
+    return submitAndReport("image", model, parsed);
   },
 };
 
 export const videoCommand: CommandModule = {
   spec: {
     name: "video",
-    summary: "Generate video from a prompt (downloads results by default)",
-    args: [{ name: "prompt", required: true, description: "text prompt for the video" }],
+    summary: "Generate video via the Higgsfield CLI (downloads results by default)",
+    args: [{ name: "prompt", required: true, description: "text prompt for the video; give it first, before any flags" }],
     flags: [
-      {
-        name: "model",
-        type: "string",
-        description: `video model id (default ${DEFAULTS.video}, or ${DEFAULTS.videoWithImage} when --image is set)`,
-      },
-      { name: "image", type: "string", description: "input image (local file or URL) for image-to-video / first frame" },
-      { name: "end-image", type: "string", description: "last-frame image for models that support it" },
-      { name: "ref", type: "string", description: "reference image(s) for reference-to-video models, comma-separated" },
-      { name: "duration", type: "string", description: "clip duration (model-dependent, e.g. 6)" },
-      { name: "aspect", type: "string", description: "aspect ratio, e.g. 16:9 (model-dependent)" },
-      { name: "resolution", type: "string", description: "output resolution (model-dependent, e.g. 1080)" },
-      { name: "audio", type: "boolean", description: "generate audio (models that support it)" },
+      { name: "model", type: "string", description: `video model job_type (default ${DEFAULT_MODELS.video})` },
       ...COMMON_FLAGS,
     ],
+    passthrough: true,
+    passthroughHint: PASSTHROUGH_HINT,
     examples: [
-      'higgsfield-axi video "slow dolly-in on a sunlit desk" --aspect 16:9',
-      'higgsfield-axi video "animate this hero image" --image ./hero.png',
-      'higgsfield-axi video "orbit shot" --model kling-video/v2.5-turbo/pro/image-to-video --image ./shot.jpg',
+      'higgsfield-axi video "slow dolly-in on a sunlit desk" --aspect_ratio 16:9',
+      'higgsfield-axi video "animate this hero image" --start-image ./hero.png',
+      'higgsfield-axi video "orbit shot" --model kling3_0 --duration 5 --mode pro',
     ],
   },
   async run(parsed) {
-    const modelId =
-      (parsed.flags["model"] as string | undefined) ??
-      (parsed.flags["image"] !== undefined ? DEFAULTS.videoWithImage : DEFAULTS.video);
-    const model = findModel(modelId);
-    if (model.kind !== "video") {
-      throw new UsageError(
-        `${model.id} is a ${model.kind} model`,
-        `use: higgsfield-axi ${model.kind} "<prompt>" --model ${model.id}`,
-      );
-    }
-    const values: Record<string, unknown> = parseParamsFlag(parsed.flags["params"]);
-    setRole(model, values, "duration", "--duration", parsed.flags["duration"]);
-    setRole(model, values, "aspect", "--aspect", parsed.flags["aspect"]);
-    setRole(model, values, "resolution", "--resolution", parsed.flags["resolution"]);
-    setRole(model, values, "seed", "--seed", parsed.flags["seed"]);
-    if (parsed.flags["audio"]) {
-      const p = roleParam(model, "audio");
-      if (!p) {
-        throw new UsageError(
-          `model ${model.id} does not support --audio`,
-          `see its parameters with: higgsfield-axi models ${model.id}`,
-        );
-      }
-      values[p.name] = true;
-    }
-    const mediaLists: Record<string, string[]> = {};
-    await resolveMediaRole(model, mediaLists, "image", "--image", parsed.flags["image"]);
-    await resolveMediaRole(model, mediaLists, "endImage", "--end-image", parsed.flags["end-image"]);
-    await resolveMediaRole(model, mediaLists, "ref", "--ref", parsed.flags["ref"]);
-    const body = buildBody(model, { prompt: parsed.positionals[0]!, values, mediaLists });
-    return submitAndReport(model, body, parsed);
+    const model = (parsed.flags["model"] as string | undefined) ?? DEFAULT_MODELS.video;
+    return submitAndReport("video", model, parsed);
   },
 };

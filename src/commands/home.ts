@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { CommandModule } from "../cli/router.js";
 import { print } from "../output/toon.js";
 import { renderHome, rootHelpText } from "../skill/content.js";
+import { probeCli } from "../hf/exec.js";
 
 function readVersion(): string {
   const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json");
@@ -15,17 +16,18 @@ export const homeCommand: CommandModule = {
   spec: {
     name: "",
     summary: "Home view: live content first (AXI principle 8)",
-    flags: [
-      { name: "version", type: "boolean", description: "print the tool version" },
-    ],
+    flags: [{ name: "version", type: "boolean", description: "print the tool version" }],
     examples: ["higgsfield-axi", "higgsfield-axi --version"],
   },
-  run(parsed) {
+  async run(parsed) {
     if (parsed.flags["version"]) {
       print(`higgsfield-axi: ${readVersion()}`);
       return 0;
     }
-    print(renderHome(process.argv[1] ?? "higgsfield-axi"));
+    // Never crash on a missing/unauthenticated CLI (AXI principle 8):
+    // probeCli reports its state instead of throwing.
+    const status = await probeCli();
+    print(renderHome(process.argv[1] ?? "higgsfield-axi", status));
     return 0;
   },
 };
