@@ -5,3 +5,14 @@ import { emitBlock } from "./toon.js";
 export function helpBlock(lines: string[]): string {
   return emitBlock("help", lines);
 }
+
+/**
+ * Like helpBlock, but for commands to run in a DIFFERENT program (the
+ * wrapped `higgsfield` CLI, npm/brew installers) rather than this tool.
+ * Kept out of help[]/next[]/golden-path[] so AXI tooling that discovers
+ * subcommands from those blocks never mistakes a third-party command for
+ * one of ours.
+ */
+export function fixBlock(lines: string[]): string {
+  return emitBlock("fix", lines);
+}

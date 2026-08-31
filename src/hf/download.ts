@@ -1,10 +1,10 @@
-// Downloads completed outputs to a local directory and returns the paths.
-// Filenames: <request-id>-<n>.<ext>, extension from the URL or content type.
+// Downloads a completed job's output URLs to a local directory. The
+// Higgsfield CLI only prints result URLs; fetching them locally so an agent
+// gets a file path back is this tool's own value-add over the vendor CLI.
 
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AxiError } from "../output/errors.js";
-import { outputUrls, type RequestStatus } from "./status.js";
 
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -32,10 +32,10 @@ function extFromUrl(url: string): string | null {
 }
 
 export async function downloadOutputs(
-  status: RequestStatus,
+  jobId: string,
+  urls: string[],
   outDir: string,
 ): Promise<DownloadedFile[]> {
-  const urls = outputUrls(status);
   if (urls.length === 0) return [];
   await mkdir(outDir, { recursive: true });
   const files: DownloadedFile[] = [];
@@ -48,19 +48,19 @@ export async function downloadOutputs(
       const message = err instanceof Error ? err.message : String(err);
       throw new AxiError(
         `downloading output ${i + 1} failed: ${message}`,
-        `re-fetch outputs with: higgsfield-axi wait ${status.request_id} --out ${outDir}`,
+        `re-fetch outputs with: higgsfield-axi status ${jobId}`,
       );
     }
     if (!res.ok) {
       throw new AxiError(
         `downloading output ${i + 1} failed: HTTP ${res.status}`,
-        `re-fetch outputs with: higgsfield-axi wait ${status.request_id} --out ${outDir}`,
+        `re-fetch outputs with: higgsfield-axi status ${jobId}`,
       );
     }
     const contentType = (res.headers.get("content-type") ?? "").split(";")[0]!.trim();
     const ext = extFromUrl(url) ?? EXT_BY_CONTENT_TYPE[contentType] ?? ".bin";
     const suffix = urls.length > 1 ? `-${i + 1}` : "";
-    const path = join(outDir, `${status.request_id}${suffix}${ext}`);
+    const path = join(outDir, `${jobId}${suffix}${ext}`);
     const buf = Buffer.from(await res.arrayBuffer());
     await writeFile(path, buf);
     files.push({ path, bytes: buf.length });

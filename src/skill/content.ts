@@ -4,12 +4,12 @@
 
 import { homedir } from "node:os";
 import { emitKV, emitList } from "../output/toon.js";
-import { helpBlock } from "../output/suggest.js";
-import { DEFAULTS, MODELS } from "../catalog/index.js";
-import { credsStatus } from "../api/creds.js";
+import { fixBlock, helpBlock } from "../output/suggest.js";
+import type { CliStatus } from "../hf/exec.js";
+import { CATALOG_BLURB, DEFAULT_MODELS } from "../hf/defaults.js";
 
 export const DESCRIPTION =
-  "Generate images and video via the Higgsfield API and get local file paths back";
+  "Generate images, video, and more by wrapping the official Higgsfield CLI, and get local file paths back";
 
 export const SPEC_VERSION = "axi/1.0-2026-07";
 
@@ -18,31 +18,51 @@ export function collapseHome(path: string): string {
   return path.startsWith(home) ? "~" + path.slice(home.length) : path;
 }
 
+function cliStatusLine(status: CliStatus): string {
+  if (!status.installed) return "not installed";
+  return status.version ? `installed (${status.version})` : "installed";
+}
+
+function authStatusLine(status: CliStatus): string {
+  if (!status.installed) return "unknown (install the CLI first)";
+  if (status.authenticated === undefined) return "unknown";
+  return status.authenticated ? "authenticated" : "not authenticated";
+}
+
 /**
  * Shared body of the home view; `tool` is how commands are written
  * ("higgsfield-axi" live, "npx -y higgsfield-axi" in the static skill).
- * Static content only - the live credentials line is added in renderHome.
  */
-export function homeBody(tool: string): string {
-  const images = MODELS.filter((m) => m.kind === "image").length;
-  const videos = MODELS.filter((m) => m.kind === "video").length;
+export function homeBody(tool: string, status: CliStatus): string {
   const facts = emitKV([
-    ["catalog", `${MODELS.length} models (${images} image, ${videos} video)`],
-    ["defaults", `image=${DEFAULTS.image} video=${DEFAULTS.video} out=./higgsfield-out`],
+    ["higgsfield-cli", cliStatusLine(status)],
+    ["auth", authStatusLine(status)],
+    ["catalog", CATALOG_BLURB],
   ]);
+  if (!status.installed) {
+    // fix[], not help[]: these are commands for a different program, and
+    // AXI tooling that discovers subcommands from help[] blocks would
+    // otherwise mistake e.g. "install" for a subcommand of this tool.
+    const fix = fixBlock(["npm install -g @higgsfield/cli", "brew install higgsfield-ai/tap/higgsfield"]);
+    return [facts, fix].join("\n");
+  }
+  if (!status.authenticated) {
+    const fix = fixBlock(["higgsfield auth login"]);
+    const help = helpBlock([`${tool} models`]);
+    return [facts, fix, help].join("\n");
+  }
   const help = helpBlock([
-    `${tool} image "<prompt>" --aspect 16:9`,
-    `${tool} video "<prompt>" --image <file-or-url>`,
+    `${tool} image "<prompt>" --model ${DEFAULT_MODELS.image}`,
+    `${tool} video "<prompt>" --model ${DEFAULT_MODELS.video}`,
     `${tool} models --kind image`,
-    `${tool} wait <request-id>`,
+    `${tool} wait <job-id>`,
   ]);
   return [facts, help].join("\n");
 }
 
-export function renderHome(binPath: string): string {
+export function renderHome(binPath: string, status: CliStatus): string {
   const header = `higgsfield-axi: ${collapseHome(binPath)} — ${DESCRIPTION}`;
-  const creds = `credentials: ${credsStatus()}`;
-  return [header, creds, homeBody("higgsfield-axi")].join("\n");
+  return [header, homeBody("higgsfield-axi", status)].join("\n");
 }
 
 /** Full tool reference for `higgsfield-axi --help`. */
@@ -53,9 +73,8 @@ export function rootHelpText(): string {
       { command: "models [model-id]", summary: "List models or show one model's parameters" },
       { command: "image <prompt>", summary: "Generate images (downloads results by default)" },
       { command: "video <prompt>", summary: "Generate video (downloads results by default)" },
-      { command: "status <request-id>", summary: "Show request state and output URLs" },
-      { command: "wait <request-id>", summary: "Poll to a terminal state and download outputs" },
-      { command: "cancel <request-id>", summary: "Cancel a queued request" },
+      { command: "status <job-id>", summary: "Show job state and output URLs" },
+      { command: "wait <job-id>", summary: "Poll to completion and download outputs" },
     ],
     ["command", "summary"],
   );
@@ -71,14 +90,16 @@ export function rootHelpText(): string {
     `higgsfield-axi: ${DESCRIPTION}`,
     commands,
     flags,
+    "requires[1]:",
+    "  the official Higgsfield CLI (`higgsfield`, npm i -g @higgsfield/cli) - see: https://github.com/higgsfield-ai/cli",
     "examples[3]:",
-    '  higgsfield-axi image "hero banner, soft gradients" --aspect 16:9',
-    '  higgsfield-axi video "slow pan over a workspace" --image ./hero.png',
+    '  higgsfield-axi image "hero banner, soft gradients" --aspect_ratio 16:9',
+    '  higgsfield-axi video "slow pan over a workspace" --start-image ./hero.png',
     "  higgsfield-axi models --kind video",
   ].join("\n");
 }
 
-/** The static SKILL.md: home content with zero-install command forms. */
+/** The static SKILL.md: describes the wrapper model with zero-install command forms. */
 export function renderSkill(): string {
   const frontmatter = [
     "---",
@@ -89,17 +110,31 @@ export function renderSkill(): string {
   const body = [
     "# higgsfield-axi",
     "",
-    `${DESCRIPTION} (built against AXI spec ${SPEC_VERSION}). Run the commands below with npx — no install needed.`,
+    `${DESCRIPTION} (built against AXI spec ${SPEC_VERSION}). This tool shells out to the official [Higgsfield CLI](https://github.com/higgsfield-ai/cli) - it does not call the Higgsfield API directly.`,
     "",
-    "Credentials: set `HF_API_KEY_ID` and `HF_API_KEY_SECRET` (keys from https://cloud.higgsfield.ai), or write them as KEY=VALUE lines to `~/.config/higgsfield-axi/credentials`.",
+    "Install and authenticate the official CLI first (one-time setup this tool depends on):",
+    "",
+    "```sh",
+    "npm install -g @higgsfield/cli   # or: brew install higgsfield-ai/tap/higgsfield",
+    "higgsfield auth login",
+    "```",
+    "",
+    "Then run higgsfield-axi with npx - no separate install needed:",
     "",
     "```",
-    homeBody("npx -y higgsfield-axi"),
+    `higgsfield-axi: ${DESCRIPTION}`,
+    emitKV([["catalog", CATALOG_BLURB]]),
+    helpBlock([
+      `npx -y higgsfield-axi image "<prompt>" --model ${DEFAULT_MODELS.image}`,
+      `npx -y higgsfield-axi video "<prompt>" --model ${DEFAULT_MODELS.video}`,
+      "npx -y higgsfield-axi models --kind image",
+      "npx -y higgsfield-axi wait <job-id>",
+    ]),
     "```",
     "",
-    "`image`/`video` submit a generation, poll to completion, download outputs, and print local file paths (`--no-wait` to just get the request id). `--ref`/`--image` accept local files (uploaded automatically) or URLs. `models <model-id>` shows every parameter a model accepts; pass extras with `--params '{...}'`.",
+    "`image`/`video` shell out to `higgsfield generate create <model> --prompt ...`, wait for completion by default, download outputs, and print local file paths (`--no-wait` to just get the job id back). Any flag not shown in `--help` is forwarded verbatim to that underlying call (e.g. `--aspect_ratio`, `--resolution`, `--image-references`, `--duration`) - inspect a model's accepted parameters with `higgsfield-axi models <model-id>` or `higgsfield model get <model-id>`.",
     "",
-    "Every command supports `--help`. Exit codes: 0 success/no-op, 1 error, 2 usage error. All output is TOON on stdout.",
+    "Every command supports `--help`. Exit codes: 0 success/no-op, 1 error, 2 usage error. All output is TOON on stdout. There is no `cancel` command - the underlying Higgsfield CLI does not expose one.",
   ].join("\n");
   return [frontmatter, "", body, ""].join("\n");
 }

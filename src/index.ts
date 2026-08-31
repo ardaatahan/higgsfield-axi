@@ -2,7 +2,7 @@ import { dispatch, type Registry } from "./cli/router.js";
 import { homeCommand, rootHelp } from "./commands/home.js";
 import { modelsCommand } from "./commands/models.js";
 import { imageCommand, videoCommand } from "./commands/generate.js";
-import { cancelCommand, statusCommand, waitCommand } from "./commands/requests.js";
+import { statusCommand, waitCommand } from "./commands/requests.js";
 
 const registry: Registry = {
   tool: "higgsfield-axi",
@@ -14,7 +14,6 @@ const registry: Registry = {
     video: videoCommand,
     status: statusCommand,
     wait: waitCommand,
-    cancel: cancelCommand,
   },
   aliases: {},
 };

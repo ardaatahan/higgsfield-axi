@@ -7,6 +7,8 @@ import { UsageError } from "../output/errors.js";
 export interface Parsed {
   positionals: string[];
   flags: Record<string, string | boolean>;
+  /** Unrecognized --flags collected when spec.passthrough is true. */
+  passthrough: Record<string, string | boolean>;
   help: boolean;
 }
 
@@ -27,6 +29,7 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
     if (f.default !== undefined) flags[f.name] = f.default;
   }
   const positionals: string[] = [];
+  const passthrough: Record<string, string | boolean> = {};
   let help = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -45,10 +48,26 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
       }
       const flagSpec = spec.flags.find((f) => f.name === name);
       if (!flagSpec) {
-        throw new UsageError(
-          `unknown flag --${name}${forScope(spec)}`,
-          validFlagsHint(spec),
-        );
+        if (!spec.passthrough) {
+          throw new UsageError(
+            `unknown flag --${name}${forScope(spec)}`,
+            validFlagsHint(spec),
+          );
+        }
+        let value: string | boolean;
+        if (inline !== undefined) {
+          value = inline;
+        } else {
+          const next = argv[i + 1];
+          if (next !== undefined && !next.startsWith("--")) {
+            value = next;
+            i++;
+          } else {
+            value = true;
+          }
+        }
+        passthrough[name] = value;
+        continue;
       }
       if (flagSpec.type === "boolean") {
         if (inline !== undefined) {
@@ -100,5 +119,5 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
     }
   }
 
-  return { positionals, flags, help };
+  return { positionals, flags, passthrough, help };
 }

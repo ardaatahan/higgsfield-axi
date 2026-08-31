@@ -24,4 +24,8 @@ export interface CommandSpec {
   args?: ArgSpec[];
   flags: FlagSpec[];
   examples: string[];
+  /** When true, unknown --flags are forwarded instead of rejected (see args.ts). */
+  passthrough?: boolean;
+  /** Shown in --help when passthrough is true, e.g. what the flags forward to. */
+  passthroughHint?: string;
 }

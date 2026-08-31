@@ -1,15 +1,26 @@
 # higgsfield-axi
 
-An AXI (Agent eXperience Interface) compliant CLI (spec `axi/1.0-2026-07`) for the [Higgsfield generation API](https://docs.higgsfield.ai/docs). Generate images and video from the terminal - by hand or from an agent - and get local file paths back.
+An AXI (Agent eXperience Interface) compliant CLI (spec `axi/1.0-2026-07`) that wraps the official [Higgsfield CLI](https://github.com/higgsfield-ai/cli) (`higgsfield`, package `@higgsfield/cli`). Generate images and video from the terminal - by hand or from an agent - and get local file paths back.
 
 - Structured, token-efficient TOON output on stdout; exit codes `0` success / `1` error / `2` usage error; no interactive prompts.
-- `image` / `video` submit a request, poll with backoff to a terminal state, download the outputs, and print local paths.
-- Local input files (`--ref`, `--image`) upload automatically through Higgsfield's presigned-URL flow.
-- The model catalog (48 models at the time of writing) is generated from Higgsfield's OpenAPI spec and checked in, so the CLI works offline and stays reviewable.
+- Shells out to the official `higgsfield` CLI for every generation, listing, and job-lifecycle call - this tool never talks to `api.higgsfield.ai` directly.
+- `image` / `video` build a `higgsfield generate create <model>` invocation, wait for completion by default, download outputs, and print local file paths.
+- `models` reads the live catalog from `higgsfield model list` / `higgsfield model get <model-id>`, so it always reflects what your installed CLI version supports.
 
 ## Install
 
-Requires Node.js >= 20.
+Requires Node.js >= 20, plus the official Higgsfield CLI on `PATH`:
+
+```sh
+# the official CLI this tool wraps - pick one
+npm install -g @higgsfield/cli
+brew install higgsfield-ai/tap/higgsfield
+curl -fsSL https://raw.githubusercontent.com/higgsfield-ai/cli/main/install.sh | sh
+
+higgsfield auth login
+```
+
+Then install higgsfield-axi itself:
 
 ```sh
 # from GitHub (builds on install)
@@ -20,104 +31,82 @@ git clone https://github.com/ardaatahan/higgsfield-axi
 cd higgsfield-axi && npm install && npm run build && npm link
 ```
 
+Running `higgsfield-axi` with no arguments shows whether the `higgsfield` CLI is installed, whether it's authenticated, and example commands - it never crashes when the CLI is missing or logged out, it just tells you how to fix it.
+
 ## Credentials
 
-Create an API key at [cloud.higgsfield.ai](https://cloud.higgsfield.ai), then either:
+Authentication is entirely delegated to the official CLI - higgsfield-axi does not read, store, or accept any credentials of its own:
 
 ```sh
-export HF_API_KEY_ID=...
-export HF_API_KEY_SECRET=...
+higgsfield auth login    # opens a browser (OAuth 2.0 PKCE)
+higgsfield auth token    # confirm you're logged in
+higgsfield workspace set <workspace_id>   # most commands need an active workspace
 ```
 
-or write a config file at `~/.config/higgsfield-axi/credentials` (respects `XDG_CONFIG_HOME`):
-
-```
-HF_API_KEY_ID=...
-HF_API_KEY_SECRET=...
-```
-
-Environment variables take precedence over the file. Credentials are only ever sent to `api.higgsfield.ai` in the `Authorization` header; the CLI never prints them.
-
-Running `higgsfield-axi` with no arguments shows whether credentials are configured, the catalog summary, and example commands.
+higgsfield-axi never prints the access token or any other secret in its own output.
 
 ## Commands
 
 ### `higgsfield-axi models [model-id]`
 
-List the catalog, or show every parameter one model accepts.
-
 ```sh
-higgsfield-axi models --kind image        # filter by kind; --fields adds columns
-higgsfield-axi models soul/standard       # parameter detail: types, defaults, valid values
+higgsfield-axi models --kind video          # filter by media kind: image, video, audio, text
+higgsfield-axi models nano_banana_2         # parameter detail for one model
 ```
 
-Model ids mirror the API paths (minus the `higgsfield-ai/` prefix): `soul/standard`, `nano-banana`, `veo3.1/fast/image-to-video`, `kling-video/v2.5-turbo/pro/image-to-video`, ...
+Model ids are the CLI's own `job_type` values (`nano_banana_2`, `veo3_1`, `kling3_0`, `text2image_soul_v2`, ...). The full, current list always comes from `higgsfield model list` - see [MODELS.md](https://github.com/higgsfield-ai/cli/blob/main/MODELS.md) upstream for a browsable reference.
 
 ### `higgsfield-axi image <prompt>`
 
 ```sh
-higgsfield-axi image "minimal hero banner, pastel gradients" --aspect 16:9
-higgsfield-axi image "same scene at night" --ref ./day.jpg          # defaults to soul/reference
-higgsfield-axi image "product shot" --model nano-banana --n 4
-higgsfield-axi image "editorial portrait" --resolution 4K --seed 42 --no-wait
+higgsfield-axi image "minimal hero banner, pastel gradients" --aspect_ratio 16:9
+higgsfield-axi image "same scene at night" --image-references ./day.jpg
+higgsfield-axi image "product shot" --model gpt_image_2 --quality high --no-wait
 ```
 
-Flags: `--model` (default `soul/standard`; `soul/reference` when `--ref` is set), `--ref` (file or URL; comma-separate several for models that accept a list), `--aspect`, `--resolution`, `--n`, `--seed`, `--params`, `--out`, `--no-wait`, `--timeout`.
+Flags: `--model` (default `nano_banana_2`), `--wait-timeout`, `--wait-interval`, `--no-wait`, `--out`. Any other `--flag value` is forwarded verbatim to `higgsfield generate create <model>` - that covers per-model parameters like `--aspect_ratio`, `--resolution`, `--duration`, `--mode`, and media flags like `--image-references`, `--start-image`, `--end-image` (local file paths are uploaded automatically by the underlying CLI). Inspect what a model accepts with `higgsfield-axi models <model-id>`.
 
 ### `higgsfield-axi video <prompt>`
 
 ```sh
-higgsfield-axi video "slow dolly-in on a sunlit desk" --aspect 16:9 --audio
-higgsfield-axi video "animate this hero image" --image ./hero.png   # defaults to veo3.1/fast/image-to-video
-higgsfield-axi video "orbit shot" --model kling-video/v2.5-turbo/pro/image-to-video --image ./shot.jpg
+higgsfield-axi video "slow dolly-in on a sunlit desk" --aspect_ratio 16:9
+higgsfield-axi video "animate this hero image" --start-image ./hero.png
+higgsfield-axi video "orbit shot" --model kling3_0 --duration 5 --mode pro
 ```
 
-Flags: `--model` (default `veo3.1/fast`; `veo3.1/fast/image-to-video` when `--image` is set), `--image` (input/first frame), `--end-image` (last frame), `--ref` (reference-to-video models), `--duration`, `--aspect`, `--resolution`, `--audio`, `--seed`, `--params`, `--out`, `--no-wait`, `--timeout`.
+Same flag model as `image`, defaulting `--model` to `veo3_1`.
 
-Any parameter a model accepts but no flag covers can be passed as JSON: `--params '{"style_id": "...", "enhance_prompt": false}'`. Parameters are validated against the catalog (names, enums, ranges) before anything is sent.
-
-### `higgsfield-axi status | wait | cancel <request-id>`
+### `higgsfield-axi status | wait <job-id>`
 
 ```sh
-higgsfield-axi status <request-id>          # state + output URLs, no download
-higgsfield-axi wait <request-id> --out ./assets   # poll to terminal state, download outputs
-higgsfield-axi cancel <request-id>          # queued requests only; terminal ones are a no-op
+higgsfield-axi status <job-id>                     # state + output URLs, no download
+higgsfield-axi wait <job-id> --out ./assets         # poll to completion, download outputs
 ```
+
+There is no `cancel` command: the underlying `higgsfield` CLI does not expose job cancellation (verified against `higgsfield generate --help`).
 
 ## Output downloads
 
-By default `image`, `video`, and `wait` poll until the request finishes and download every output to `./higgsfield-out/` (override with `--out <dir>`), named `<request-id>.<ext>` (`-1`, `-2`, ... suffixes when there are several). The printed TOON includes the request id, final status, and each local path with its byte size. With `--no-wait` you get the request id immediately and resume later with `wait`.
-
-Polling follows [Higgsfield's guidance](https://docs.higgsfield.ai/docs/concepts/polling): 2 s initial interval growing 1.5x to a 10 s cap with jitter; transient 5xx/network failures are retried, hard failures (401/404) stop immediately. `--timeout` (default 900 s) bounds the wait; on timeout the request keeps running server-side and `wait <request-id>` resumes it. A `failed`/`nsfw` terminal state exits `1` (failed and NSFW requests are not charged).
-
-## Regenerating the model catalog
-
-`src/catalog/models.generated.ts` is derived from the [OpenAPI spec](https://docs.higgsfield.ai/docs/openapi.json):
-
-```sh
-npm run catalog:gen        # fetches the live spec (or: node scripts/gen-catalog.mjs ./openapi.json)
-npm run build
-npm test
-```
-
-Commit the diff. If Higgsfield adds a model family with a new OpenAPI tag, the generator fails until the tag is classified as image or video in `scripts/gen-catalog.mjs`.
+By default `image`, `video`, and `wait` wait for the job to finish (via the CLI's own `--wait` / `generate wait`) and download every output to `./higgsfield-out/` (override with `--out <dir>`), named `<job-id>.<ext>` (`-1`, `-2`, ... suffixes when there are several). With `--no-wait` you get the job id immediately and resume later with `wait`. A failed/rejected terminal status exits `1`.
 
 ## Development
 
 ```sh
 npm install
-npm test           # builds, then runs the offline suite (mocked Higgsfield API - no credentials needed)
+npm test           # builds, then runs the offline suite (mocked `higgsfield` binary - no credentials needed)
 npm run skill:gen  # regenerate skills/higgsfield-axi/SKILL.md after changing src/skill/content.ts
 npx -y axi-axi validate "node bin/higgsfield-axi.js" --dir .   # AXI compliance checks
 ```
 
-The test suite covers request construction, auth-header formatting, upload/download flows, polling/backoff, cancel semantics, and error mapping against a local mock server. A live-API smoke test (needs real credentials and spends credits) is the one thing not covered; after configuring credentials, verify with:
+The test suite covers argv construction for every subcommand, `--json` output parsing, passthrough-flag forwarding, downloads, and error mapping against a mocked `higgsfield` binary (`test/helpers/mock-hf.mjs`). It does not need the real CLI installed. A live smoke test (needs the real `higgsfield` CLI installed and logged in) is the one thing not covered by CI; after installing and authenticating it, verify with:
 
 ```sh
-higgsfield-axi image "a red apple on a white table" --n 1
+higgsfield-axi image "a red apple on a white table" --no-wait
 ```
 
-Test-only environment hooks: `HIGGSFIELD_BASE_URL` overrides the API base URL, and `HIGGSFIELD_AXI_POLL_BASE_MS` / `HIGGSFIELD_AXI_POLL_CAP_MS` shrink the polling schedule so tests run fast.
+Test-only environment hook: `HIGGSFIELD_AXI_BIN` overrides the `higgsfield` binary higgsfield-axi shells out to, so tests can point it at a mock.
+
+`axi-axi validate` passes all 12 checks with 4 advisory notes (VA1-VA4: idempotent no-ops, long-text truncation, zero-result messaging, list `--fields` escape hatch) - these are non-blocking suggestions, not failures, and are left as-is since `models`/`model` output already passes through the CLI's own `--json` shape faithfully rather than reshaping it.
 
 ## License
 
