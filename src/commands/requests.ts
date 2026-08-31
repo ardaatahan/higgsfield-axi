@@ -28,8 +28,8 @@ export const statusCommand: CommandModule = {
   async run(parsed) {
     const id = requireJobId(parsed.positionals);
     const stdout = await hf(["generate", "get", id, "--json"]);
-    const job = parseJobOutput(stdout);
-    const kv: Array<[string, unknown]> = [["job", job.jobId || id], ["status", job.status]];
+    const job = parseJobOutput(stdout, id);
+    const kv: Array<[string, unknown]> = [["job", job.jobId], ["status", job.status]];
     if (isFailureStatus(job.status)) kv.push(["error", job.status]);
     print(emitKV(kv));
     if (job.urls.length > 0) {
@@ -62,10 +62,10 @@ export const waitCommand: CommandModule = {
     if (parsed.flags["interval"]) args.push("--interval", String(parsed.flags["interval"]));
     args.push("--json");
     const stdout = await hf(args);
-    const job = parseJobOutput(stdout);
+    const job = parseJobOutput(stdout, id);
     const outDir = String(parsed.flags["out"]);
-    const files = !isFailureStatus(job.status) && job.urls.length > 0 ? await downloadOutputs(job.jobId || id, job.urls, outDir) : [];
-    const { text, exitCode } = renderJobResult({ ...job, jobId: job.jobId || id }, files);
+    const files = !isFailureStatus(job.status) && job.urls.length > 0 ? await downloadOutputs(job.jobId, job.urls, outDir) : [];
+    const { text, exitCode } = renderJobResult(job, files);
     print(text);
     return exitCode;
   },

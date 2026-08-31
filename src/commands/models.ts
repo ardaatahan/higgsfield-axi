@@ -9,6 +9,23 @@ import { hf } from "../hf/exec.js";
 
 const KIND_VALUES = ["image", "video", "audio", "text"];
 
+// `model get --json` reports the model's media kind, so the next step can name
+// the one command that accepts it. An absent or unrecognized value means both
+// stay on offer rather than guessing wrong.
+function generateKind(raw: string): "image" | "video" | undefined {
+  let data: unknown;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const mediaType = (data as Record<string, unknown>)["media_type"];
+  if (typeof mediaType !== "string") return undefined;
+  const kind = mediaType.trim().toLowerCase().split("/")[0];
+  return kind === "image" || kind === "video" ? kind : undefined;
+}
+
 export const modelsCommand: CommandModule = {
   spec: {
     name: "models",
@@ -26,11 +43,13 @@ export const modelsCommand: CommandModule = {
     if (id !== undefined) {
       const stdout = await hf(["model", "get", id, "--json"]);
       print(emitFromJson("model", stdout));
+      const kind = generateKind(stdout);
       print(
-        helpBlock([
-          `higgsfield-axi image "<prompt>" --model ${id}`,
-          `higgsfield-axi video "<prompt>" --model ${id}`,
-        ]),
+        helpBlock(
+          kind
+            ? [`higgsfield-axi ${kind} "<prompt>" --model ${id}`]
+            : [`higgsfield-axi image "<prompt>" --model ${id}`, `higgsfield-axi video "<prompt>" --model ${id}`],
+        ),
       );
       return 0;
     }

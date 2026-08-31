@@ -36,24 +36,27 @@ export function parseJob(data: unknown): JobResult {
 const RAW_PREVIEW_LIMIT = 300;
 
 /**
- * Parse a `--json` job payload, or fail loudly. Output that does not carry an
- * identifiable job must not be smoothed into a plausible-looking "unknown"
- * success - whether it failed to parse at all or merely came back in an
- * unexpected shape. The raw text travels in the error so the caller can see
- * what came back.
+ * Parse a `--json` job payload, or fail loudly. A result must be tied to a job
+ * id: either the payload's own, or - for `status`/`wait`, where the caller
+ * already knows it - `knownId`, provided the payload at least reports a
+ * status. Anything else is not smoothed into a plausible-looking "unknown"
+ * success; the raw text travels in the error so the caller can see what came
+ * back.
  */
-export function parseJobOutput(stdout: string): JobResult {
+export function parseJobOutput(stdout: string, knownId?: string): JobResult {
   const data = parseJsonLoose(stdout);
-  const job =
-    data && typeof data === "object" && !Array.isArray(data) ? parseJob(data) : undefined;
-  if (!job || !job.jobId) {
-    const raw = stdout.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
-    throw new AxiError(
-      `higgsfield returned a malformed response: ${raw || "(no output)"}`,
-      "retry the command; if it persists, run the same `higgsfield generate` command directly to inspect its output",
-    );
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    const job = parseJob(data);
+    if (job.jobId) return job;
+    if (knownId && typeof (data as Record<string, unknown>)["status"] === "string") {
+      return { ...job, jobId: knownId };
+    }
   }
-  return job;
+  const raw = stdout.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
+  throw new AxiError(
+    `higgsfield returned a malformed response: ${raw || "(no output)"}`,
+    "retry the command; if it persists, run the same `higgsfield generate` command directly to inspect its output",
+  );
 }
 
 // The CLI does not publish a status enum, so failure is detected by keyword

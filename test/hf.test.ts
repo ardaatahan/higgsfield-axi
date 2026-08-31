@@ -198,6 +198,18 @@ describe("image generation", () => {
     expect(existsSync(join(workDir, "higgsfield-out"))).toBe(false);
   });
 
+  it("marks a completed job that produced no outputs explicitly and suggests re-checking it", async () => {
+    const r = await run(["image", "a chair"], {
+      MOCK_HF_JOB_ID: "job-empty",
+      MOCK_HF_JOB_URLS: "[]",
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("outputs: 0");
+    expect(r.stdout).toContain("higgsfield-axi wait job-empty");
+    expect(r.stdout).toContain("higgsfield-axi status job-empty");
+    expect(r.stdout).not.toContain('higgsfield-axi image "<prompt>"');
+  });
+
   it("exits 1 and reports the failure when the job's terminal status indicates failure", async () => {
     const r = await run(["image", "a chair"], { MOCK_HF_JOB_STATUS: "failed" });
     expect(r.status).toBe(1);
@@ -321,6 +333,36 @@ describe("job lifecycle commands", () => {
     }
   });
 
+  it("wait falls back to the requested job id when the CLI's response omits it", async () => {
+    let asset: AssetServer | undefined;
+    try {
+      asset = new AssetServer();
+      const base = await asset.start();
+      const mp4 = Buffer.from("id-less-payload");
+      asset.set("/x.mp4", "video/mp4", mp4);
+      const r = await run(["wait", "job-known"], {
+        MOCK_HF_JOB_RAW: JSON.stringify({ status: "completed", result_url: `${base}/x.mp4` }),
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("job: job-known");
+      expect(r.stdout).toContain("status: completed");
+      const file = join(workDir, "higgsfield-out", "job-known.mp4");
+      expect(existsSync(file)).toBe(true);
+      expect(readFileSync(file)).toEqual(mp4);
+    } finally {
+      await asset?.stop();
+    }
+  });
+
+  it("status falls back to the requested job id when the CLI's response omits it", async () => {
+    const r = await run(["status", "job-known"], {
+      MOCK_HF_JOB_RAW: JSON.stringify({ status: "queued" }),
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("job: job-known");
+    expect(r.stdout).toContain("status: queued");
+  });
+
   it("there is no cancel command (the upstream CLI does not expose one)", async () => {
     const r = await run(["cancel", "job-xyz"]);
     expect(r.status).toBe(2);
@@ -377,6 +419,30 @@ describe("models", () => {
     expect(r.stdout).toContain("total: 2");
     expect(r.stdout).toContain("models[2]{job_type,media_type}:");
     expect(r.stdout).toContain("veo3_1,video");
+  });
+
+  it("suggests only the command matching the model's media_type", async () => {
+    const r = await run(["models", "nano_banana_2"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "nano_banana_2", media_type: "image" }),
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('higgsfield-axi image "<prompt>" --model nano_banana_2');
+    expect(r.stdout).not.toContain('higgsfield-axi video "<prompt>" --model nano_banana_2');
+  });
+
+  it("suggests both commands when the model's media_type is absent or unrecognized", async () => {
+    const absent = await run(["models", "nano_banana_2"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "nano_banana_2" }),
+    });
+    const unrecognized = await run(["models", "some_model"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "some_model", media_type: "image_to_video" }),
+    });
+    expect(absent.status).toBe(0);
+    expect(absent.stdout).toContain('higgsfield-axi image "<prompt>" --model nano_banana_2');
+    expect(absent.stdout).toContain('higgsfield-axi video "<prompt>" --model nano_banana_2');
+    expect(unrecognized.status).toBe(0);
+    expect(unrecognized.stdout).toContain('higgsfield-axi image "<prompt>" --model some_model');
+    expect(unrecognized.stdout).toContain('higgsfield-axi video "<prompt>" --model some_model');
   });
 
   it("maps an unknown model id to a structured error", async () => {

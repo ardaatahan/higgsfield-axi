@@ -61,6 +61,8 @@ export function renderJobResult(
     parts.push(emitList("files", files, ["path", "bytes"]));
   } else if (job.urls.length > 0) {
     parts.push(emitList("outputs", job.urls.map((url) => ({ url })), ["url"]));
+  } else {
+    parts.push(emitKV([["outputs", 0]]));
   }
   return { text: parts.join("\n"), exitCode: 0 };
 }
@@ -81,11 +83,13 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
   const { text, exitCode } = renderJobResult(job, files, model);
   print(text);
   if (exitCode === 0) {
+    const noOutputs = files.length === 0 && job.urls.length === 0;
     print(
-      helpBlock([
-        `higgsfield-axi ${kind} "<prompt>" --model ${model}`,
-        "higgsfield-axi models --kind " + kind,
-      ]),
+      helpBlock(
+        noOutputs
+          ? nextStepsAfterSubmit(job.jobId)
+          : [`higgsfield-axi ${kind} "<prompt>" --model ${model}`, "higgsfield-axi models --kind " + kind],
+      ),
     );
   }
   return exitCode;
