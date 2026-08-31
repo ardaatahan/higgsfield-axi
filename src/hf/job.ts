@@ -3,7 +3,7 @@
 // does not document this shape; the field names below (job_id, status,
 // result_url, urls) come from the compiled binary's own JSON tags.
 
-import { AxiError } from "../output/errors.js";
+import { AxiError, malformedResponse } from "../output/errors.js";
 
 export interface JobResult {
   jobId: string;
@@ -34,8 +34,6 @@ export function parseJob(data: unknown): JobResult {
   return { jobId, status, urls };
 }
 
-const RAW_PREVIEW_LIMIT = 300;
-
 /**
  * Parse a `--json` job payload, or fail loudly. A result must be tied to a job
  * id: either the payload's own, or - for `status`/`wait`, where the caller
@@ -60,11 +58,7 @@ export function parseJobOutput(stdout: string, knownId?: string): JobResult {
       return { ...job, jobId: knownId };
     }
   }
-  const raw = stdout.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
-  throw new AxiError(
-    `higgsfield returned a malformed response: ${raw || "(no output)"}`,
-    "retry the command; if it persists, run the same `higgsfield generate` command directly to inspect its output",
-  );
+  throw malformedResponse(stdout, "higgsfield generate");
 }
 
 // The CLI does not publish a status enum, so failure is detected by keyword

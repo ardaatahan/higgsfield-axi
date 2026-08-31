@@ -23,3 +23,17 @@ export function renderError(err: AxiError): string {
   if (err.suggestion) lines.push(`suggestion: ${err.suggestion}`);
   return lines.join("\n");
 }
+
+const RAW_PREVIEW_LIMIT = 300;
+
+/**
+ * The CLI printed something this tool cannot read. The raw text travels in the
+ * error rather than being smoothed into a plausible-looking success.
+ */
+export function malformedResponse(stdout: string, vendorCommand: string): AxiError {
+  const raw = stdout.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
+  return new AxiError(
+    `higgsfield returned a malformed response: ${raw || "(no output)"}`,
+    `retry the command; if it persists, run the same \`${vendorCommand}\` command directly to inspect its output`,
+  );
+}

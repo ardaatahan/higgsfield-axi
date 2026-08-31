@@ -7,6 +7,7 @@ import type { FlagSpec } from "../cli/spec.js";
 import { emitKV, emitList, print } from "../output/toon.js";
 import { helpBlock, waitSuggestion } from "../output/suggest.js";
 import { hf } from "../hf/exec.js";
+import { UsageError } from "../output/errors.js";
 import { downloadOutputs } from "../hf/download.js";
 import { DEFAULT_MODELS } from "../hf/defaults.js";
 import { isFailureStatus, parseJobOutput } from "../hf/job.js";
@@ -64,6 +65,12 @@ export function renderJobResult(
 }
 
 async function submitAndReport(kind: "image" | "video", model: string, parsed: Parsed): Promise<number> {
+  if (parsed.positionals.length > 1) {
+    throw new UsageError(
+      `<prompt> must be a single argument for '${kind}', got ${parsed.positionals.length}`,
+      `quote the whole prompt: higgsfield-axi ${kind} "${parsed.positionals.join(" ")}"`,
+    );
+  }
   const prompt = parsed.positionals[0]!;
   const outDir = String(parsed.flags["out"]);
   const stdout = await hf(buildCreateArgs(model, prompt, parsed));

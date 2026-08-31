@@ -1,7 +1,8 @@
-// Turns a --json response from the Higgsfield CLI into TOON. Falls back to
-// wrapping raw text when a response isn't JSON (or the CLI changes shape),
-// so an unexpected upstream format degrades gracefully instead of crashing.
+// Turns a --json response from the Higgsfield CLI into TOON. Output that is
+// not JSON is rejected rather than wrapped as if it were catalog data, the
+// same rule src/hf/job.ts applies to job payloads.
 
+import { malformedResponse } from "./errors.js";
 import { emitBlock, emitKV, emitList } from "./toon.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -22,13 +23,12 @@ function emitRows(name: string, items: unknown[]): string {
   return emitList(name, cells, fields);
 }
 
-export function emitFromJson(name: string, raw: string): string {
+export function emitFromJson(name: string, raw: string, vendorCommand: string): string {
   let data: unknown;
   try {
-    data = JSON.parse(raw);
+    data = JSON.parse(raw.trim());
   } catch {
-    const lines = raw.trim().split("\n").filter(Boolean);
-    return lines.length > 0 ? emitBlock(name, lines) : emitKV([[name, ""]]);
+    throw malformedResponse(raw, vendorCommand);
   }
   if (Array.isArray(data)) {
     return emitRows(name, data);

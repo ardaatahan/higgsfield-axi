@@ -110,7 +110,7 @@ describe("image generation", () => {
     const r = await run(["image", "a chair", "--no-wait"], { MOCK_HF_JOB_ID: "job-nowait" });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("job: job-nowait");
-    expect(r.stdout).toContain('higgsfield-axi wait job-nowait --out "higgsfield-out"');
+    expect(r.stdout).toContain("higgsfield-axi wait job-nowait --out 'higgsfield-out'");
 
     const calls = invocations();
     expect(calls[0]).toEqual(["generate", "create", "nano_banana_2", "--prompt", "a chair", "--json"]);
@@ -122,7 +122,7 @@ describe("image generation", () => {
       MOCK_HF_JOB_ID: "job-outdir",
     });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('higgsfield-axi wait job-outdir --out "./assets"');
+    expect(r.stdout).toContain("higgsfield-axi wait job-outdir --out './assets'");
   });
 
   it("quotes an --out directory containing spaces in the suggested wait command", async () => {
@@ -130,7 +130,7 @@ describe("image generation", () => {
       MOCK_HF_JOB_ID: "job-spaced",
     });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('higgsfield-axi wait job-spaced --out "./my assets"');
+    expect(r.stdout).toContain("higgsfield-axi wait job-spaced --out './my assets'");
   });
 
   it("uses --model to override the default and forwards unknown flags to the CLI verbatim", async () => {
@@ -254,9 +254,17 @@ describe("image generation", () => {
     });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("outputs: 0");
-    expect(r.stdout).toContain('higgsfield-axi wait job-empty --out "higgsfield-out"');
+    expect(r.stdout).toContain("higgsfield-axi wait job-empty --out 'higgsfield-out'");
     expect(r.stdout).toContain("higgsfield-axi status job-empty");
     expect(r.stdout).not.toContain('higgsfield-axi image "<prompt>"');
+  });
+
+  it("rejects an unquoted multi-word prompt instead of generating on a truncated one", async () => {
+    const r = await run(["image", "a", "red", "chair"]);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toContain("error: <prompt> must be a single argument for 'image'");
+    expect(r.stdout).toContain('higgsfield-axi image "a red chair"');
+    expect(invocations()).toHaveLength(0);
   });
 
   it("explains that the prompt must come first when a forwarded flag swallowed it", async () => {
@@ -394,7 +402,7 @@ describe("job lifecycle commands", () => {
       });
       expect(r.status).toBe(1);
       expect(r.stdout).toContain("error: downloading output 1 failed: HTTP 404");
-      expect(r.stdout).toContain('suggestion: re-fetch outputs with: higgsfield-axi wait job-x --out "assets"');
+      expect(r.stdout).toContain("suggestion: re-fetch outputs with: higgsfield-axi wait job-x --out 'assets'");
     } finally {
       await asset?.stop();
     }
@@ -403,7 +411,8 @@ describe("job lifecycle commands", () => {
   it("status on a failed job suggests re-generating instead of waiting", async () => {
     const r = await run(["status", "job-f"], { MOCK_HF_JOB_STATUS: "failed" });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("error: failed");
+    expect(r.stdout).toContain("job_error: failed");
+    expect(r.stdout).not.toContain("\nerror: failed");
     expect(r.stdout).not.toContain("higgsfield-axi wait");
     expect(r.stdout).toContain('higgsfield-axi image "<prompt>" --model <model-id>');
     expect(r.stdout).toContain('higgsfield-axi video "<prompt>" --model <model-id>');
@@ -412,7 +421,7 @@ describe("job lifecycle commands", () => {
   it("status on an unfinished job still suggests waiting", async () => {
     const r = await run(["status", "job-q"], { MOCK_HF_JOB_STATUS: "queued" });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain('higgsfield-axi wait job-q --out "higgsfield-out"');
+    expect(r.stdout).toContain("higgsfield-axi wait job-q --out 'higgsfield-out'");
   });
 
   it("wait falls back to the requested job id when the CLI's response omits it", async () => {
@@ -523,13 +532,29 @@ describe("models", () => {
     const absent = await run(["models", "nano_banana_2"], {
       MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "nano_banana_2" }),
     });
-    const unparseable = await run(["models", "some_model"], {
-      MOCK_HF_MODEL_GET: "not json at all",
+    const nonString = await run(["models", "some_model"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "some_model", media: 42 }),
     });
-    for (const [r, id] of [[absent, "nano_banana_2"], [unparseable, "some_model"]] as const) {
+    for (const [r, id] of [[absent, "nano_banana_2"], [nonString, "some_model"]] as const) {
       expect(r.status).toBe(0);
       expect(r.stdout).toContain(`higgsfield-axi image "<prompt>" --model ${id}`);
       expect(r.stdout).toContain(`higgsfield-axi video "<prompt>" --model ${id}`);
+    }
+  });
+
+  it("rejects non-JSON and empty catalog output instead of reporting it as a catalog", async () => {
+    const cases = [
+      { args: ["models"], env: { MOCK_HF_MODEL_LIST: "A new Higgsfield CLI is available: 1.1.24 -> 1.2.0" } },
+      { args: ["models"], env: { MOCK_HF_MODEL_LIST: "" } },
+      { args: ["models", "nano_banana_2"], env: { MOCK_HF_MODEL_GET: "not json at all" } },
+      { args: ["models", "nano_banana_2"], env: { MOCK_HF_MODEL_GET: "" } },
+    ];
+    for (const { args, env } of cases) {
+      const r = await run(args, env);
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+      expect(r.stdout).toContain("suggestion:");
+      expect(r.stdout).not.toContain("models[1]");
     }
   });
 

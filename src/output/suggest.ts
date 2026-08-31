@@ -3,11 +3,12 @@
 import { emitBlock } from "./toon.js";
 
 /**
- * Quotes a value interpolated into a suggested command, so that a path with
- * whitespace stays a single argument when the suggestion is run verbatim.
+ * Shell-quotes a value interpolated into a suggested command, so that running
+ * the suggestion verbatim uses the literal value this tool used - single
+ * quotes, so whitespace holds together and $, backticks and ! stay inert.
  */
 export function quoteArg(value: string): string {
-  return `"${value.replace(/"/g, '\\"')}"`;
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
 
 /** The one place the `wait` follow-up command is spelled out. */

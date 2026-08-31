@@ -31,7 +31,7 @@ export const statusCommand: CommandModule = {
     const job = parseJobOutput(stdout, id);
     const failed = isFailureStatus(job.status);
     const kv: Array<[string, unknown]> = [["job", job.jobId], ["status", job.status]];
-    if (failed) kv.push(["error", job.status]);
+    if (failed) kv.push(["job_error", job.status]);
     print(emitKV(kv));
     if (job.urls.length > 0) {
       print(emitList("outputs", job.urls.map((url) => ({ url })), ["url"]));

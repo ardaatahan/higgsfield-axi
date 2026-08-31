@@ -64,7 +64,7 @@ export const modelsCommand: CommandModule = {
     }
     if (id !== undefined) {
       const stdout = await hf(["model", "get", id, "--json"]);
-      print(emitFromJson("model", stdout));
+      print(emitFromJson("model", stdout, "higgsfield model get"));
       print(helpBlock(modelNextSteps(id, mediaKind(stdout))));
       return 0;
     }
@@ -73,7 +73,7 @@ export const modelsCommand: CommandModule = {
     if (kindFilter) args.push(`--${kindFilter}`);
     args.push("--json");
     const stdout = await hf(args);
-    print(emitFromJson("models", stdout));
+    print(emitFromJson("models", stdout, "higgsfield model list"));
     print(
       helpBlock([
         "higgsfield-axi models <model-id>",
