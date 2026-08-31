@@ -44,7 +44,7 @@ function nextStepsAfterSubmit(jobId: string): string[] {
 
 /** Shared by image/video submission and the `wait` command's terminal report. */
 export function renderJobResult(
-  job: { jobId: string; status: string; urls: string[] },
+  job: { jobId: string; status: string },
   files: Array<{ path: string; bytes: number }>,
   model?: string,
 ): { text: string; exitCode: number } {
@@ -57,13 +57,9 @@ export function renderJobResult(
     return { text: emitKV(kv), exitCode: 1 };
   }
   const parts = [emitKV(kv)];
-  if (files.length > 0) {
-    parts.push(emitList("files", files, ["path", "bytes"]));
-  } else if (job.urls.length > 0) {
-    parts.push(emitList("outputs", job.urls.map((url) => ({ url })), ["url"]));
-  } else {
-    parts.push(emitKV([["outputs", 0]]));
-  }
+  parts.push(
+    files.length > 0 ? emitList("files", files, ["path", "bytes"]) : emitKV([["outputs", 0]]),
+  );
   return { text: parts.join("\n"), exitCode: 0 };
 }
 
@@ -83,7 +79,7 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
   const { text, exitCode } = renderJobResult(job, files, model);
   print(text);
   if (exitCode === 0) {
-    const noOutputs = files.length === 0 && job.urls.length === 0;
+    const noOutputs = files.length === 0;
     print(
       helpBlock(
         noOutputs

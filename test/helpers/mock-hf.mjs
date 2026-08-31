@@ -40,7 +40,7 @@ if (process.env.MOCK_HF_FAIL_WORKSPACE === "1" && (cmd === "model" || cmd === "g
 if (cmd === "model" && sub === "list") {
   process.stdout.write(
     process.env.MOCK_HF_MODEL_LIST ??
-      JSON.stringify([{ job_type: "nano_banana_2", name: "Nano Banana Pro", media_type: "image" }]),
+      JSON.stringify([{ job_type: "nano_banana_2", name: "Nano Banana Pro", media: "image" }]),
   );
   process.exit(0);
 }
@@ -51,7 +51,7 @@ if (cmd === "model" && sub === "get") {
     fail(`Unknown model "${id}".`, "Run: higgsfield model list for the current catalog.", 1);
   }
   process.stdout.write(
-    process.env.MOCK_HF_MODEL_GET ?? JSON.stringify({ job_type: id, params: [{ name: "aspect_ratio", type: "string" }] }),
+    process.env.MOCK_HF_MODEL_GET ?? JSON.stringify({ job_type: id, media: "image", params: [{ name: "aspect_ratio", type: "string" }] }),
   );
   process.exit(0);
 }

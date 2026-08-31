@@ -9,9 +9,10 @@ import { hf } from "../hf/exec.js";
 
 const KIND_VALUES = ["image", "video", "audio", "text"];
 
-// `model get --json` reports the model's media kind, so the next step can name
-// the one command that accepts it. An absent or unrecognized value means both
-// stay on offer rather than guessing wrong.
+// `model get --json` reports the model's media kind under `media` (the field
+// name the CLI's own catalog struct emits), so the next step can name the one
+// command that accepts it. An absent or unrecognized value means both stay on
+// offer rather than guessing wrong.
 function generateKind(raw: string): "image" | "video" | undefined {
   let data: unknown;
   try {
@@ -20,9 +21,10 @@ function generateKind(raw: string): "image" | "video" | undefined {
     return undefined;
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
-  const mediaType = (data as Record<string, unknown>)["media_type"];
-  if (typeof mediaType !== "string") return undefined;
-  const kind = mediaType.trim().toLowerCase().split("/")[0];
+  const record = data as Record<string, unknown>;
+  const media = record["media"] ?? record["media_type"];
+  if (typeof media !== "string") return undefined;
+  const kind = media.trim().toLowerCase().split("/")[0];
   return kind === "image" || kind === "video" ? kind : undefined;
 }
 

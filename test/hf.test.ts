@@ -409,33 +409,40 @@ describe("models", () => {
       MOCK_HF_MODEL_LIST: JSON.stringify({
         total: 2,
         models: [
-          { job_type: "nano_banana_2", media_type: "image" },
-          { job_type: "veo3_1", media_type: "video" },
+          { job_type: "nano_banana_2", media: "image" },
+          { job_type: "veo3_1", media: "video" },
         ],
       }),
     });
     expect(r.status).toBe(0);
     expect(r.stdout).not.toContain("[object Object]");
     expect(r.stdout).toContain("total: 2");
-    expect(r.stdout).toContain("models[2]{job_type,media_type}:");
+    expect(r.stdout).toContain("models[2]{job_type,media}:");
     expect(r.stdout).toContain("veo3_1,video");
   });
 
-  it("suggests only the command matching the model's media_type", async () => {
-    const r = await run(["models", "nano_banana_2"], {
-      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "nano_banana_2", media_type: "image" }),
+  it("suggests only the command matching the model's media kind", async () => {
+    const image = await run(["models", "nano_banana_2"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "nano_banana_2", media: "image" }),
     });
-    expect(r.status).toBe(0);
-    expect(r.stdout).toContain('higgsfield-axi image "<prompt>" --model nano_banana_2');
-    expect(r.stdout).not.toContain('higgsfield-axi video "<prompt>" --model nano_banana_2');
+    expect(image.status).toBe(0);
+    expect(image.stdout).toContain('higgsfield-axi image "<prompt>" --model nano_banana_2');
+    expect(image.stdout).not.toContain('higgsfield-axi video "<prompt>" --model nano_banana_2');
+
+    const video = await run(["models", "veo3_1"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "veo3_1", media: "video" }),
+    });
+    expect(video.status).toBe(0);
+    expect(video.stdout).toContain('higgsfield-axi video "<prompt>" --model veo3_1');
+    expect(video.stdout).not.toContain('higgsfield-axi image "<prompt>" --model veo3_1');
   });
 
-  it("suggests both commands when the model's media_type is absent or unrecognized", async () => {
+  it("suggests both commands when the model's media kind is absent or unrecognized", async () => {
     const absent = await run(["models", "nano_banana_2"], {
       MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "nano_banana_2" }),
     });
     const unrecognized = await run(["models", "some_model"], {
-      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "some_model", media_type: "image_to_video" }),
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "some_model", media: "image_to_video" }),
     });
     expect(absent.status).toBe(0);
     expect(absent.stdout).toContain('higgsfield-axi image "<prompt>" --model nano_banana_2');
