@@ -85,6 +85,8 @@ higgsfield-axi status <job-id>                     # state + output URLs, no dow
 higgsfield-axi wait <job-id> --out ./assets         # poll to completion, download outputs
 ```
 
+`wait` takes `--out` plus `--timeout` and `--interval` (e.g. `20m` / `5s`), forwarded to `higgsfield generate wait`; `image`/`video` spell the same tuning `--wait-timeout` / `--wait-interval`.
+
 There is no `cancel` command: the underlying `higgsfield` CLI does not expose job cancellation (verified against `higgsfield generate --help`).
 
 Batch generation (one `generate create` call producing a set of jobs - some models take generation parameters that request several outputs per call, so inspect a model with `higgsfield-axi models <model-id>` before using them) is a known v1 limitation: `image`/`video` handle a single job per call, and a job-set response is reported as an explicit unsupported-shape error naming the vendor commands (`higgsfield generate list`, `higgsfield generate get <job-id>`) to drive the set directly.

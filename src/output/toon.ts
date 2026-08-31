@@ -5,6 +5,10 @@ export function print(text: string): void {
   process.stdout.write(text + "\n");
 }
 
+// A row is one physical line, so a line break inside a value would emit extra
+// lines under a header that already declares how many rows follow. Vendor JSON
+// reaches here verbatim (see output/fromJson.ts), so breaks become visible \n /
+// \r escapes, which then force the quoted form.
 export function toonValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   const raw = String(value);

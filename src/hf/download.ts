@@ -42,6 +42,9 @@ export async function downloadOutputs(
   outDir: string,
 ): Promise<DownloadedFile[]> {
   if (urls.length === 0) return [];
+  // Two recoveries, because outDir is only to blame in one of them: a fetch
+  // failure is worth retrying with the same --out, while a filesystem failure
+  // would repeat identically, so that suggestion never echoes the path back.
   const retry = `re-fetch outputs with: ${waitSuggestion(jobId, outDir)}`;
   const retryElsewhere = `--out must name a writable directory; once it does, re-fetch outputs with: higgsfield-axi wait ${jobId} --out <writable-dir>`;
   try {
