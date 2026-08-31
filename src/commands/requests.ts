@@ -60,7 +60,7 @@ export const waitCommand: CommandModule = {
     const args = ["generate", "wait", id];
     if (parsed.flags["timeout"]) args.push("--timeout", String(parsed.flags["timeout"]));
     if (parsed.flags["interval"]) args.push("--interval", String(parsed.flags["interval"]));
-    args.push("--json");
+    args.push("--quiet", "--json");
     const stdout = await hf(args);
     const job = parseJobOutput(stdout, id);
     const outDir = String(parsed.flags["out"]);

@@ -9,11 +9,13 @@ import { hf } from "../hf/exec.js";
 
 const KIND_VALUES = ["image", "video", "audio", "text"];
 
-// `model get --json` reports the model's media kind under `media` (the field
-// name the CLI's own catalog struct emits), so the next step can name the one
-// command that accepts it. An absent or unrecognized value means both stay on
-// offer rather than guessing wrong.
-function generateKind(raw: string): "image" | "video" | undefined {
+// The model's media kind is read from `media`, believed to be the field name
+// the CLI emits: `media_type` appears nowhere in the compiled binary while a
+// single `media` json tag does. That is an inference from the binary, not
+// confirmed against live `model list`/`model get --json` output (no workspace
+// was available to check), which is why `media_type` stays on as a fallback
+// key - if the guess is wrong the kind simply reads as absent.
+function mediaKind(raw: string): string | undefined {
   let data: unknown;
   try {
     data = JSON.parse(raw);
@@ -24,8 +26,18 @@ function generateKind(raw: string): "image" | "video" | undefined {
   const record = data as Record<string, unknown>;
   const media = record["media"] ?? record["media_type"];
   if (typeof media !== "string") return undefined;
-  const kind = media.trim().toLowerCase().split("/")[0];
-  return kind === "image" || kind === "video" ? kind : undefined;
+  return media.trim().toLowerCase().split("/")[0] || undefined;
+}
+
+// Only image and video have a generate command here. A kind the tool cannot
+// generate must not be offered to either of them; an absent kind keeps both on
+// offer, since there is then nothing to tell them apart by.
+function modelNextSteps(id: string, kind: string | undefined): string[] {
+  if (kind === "image" || kind === "video") return [`higgsfield-axi ${kind} "<prompt>" --model ${id}`];
+  if (kind === undefined) {
+    return [`higgsfield-axi image "<prompt>" --model ${id}`, `higgsfield-axi video "<prompt>" --model ${id}`];
+  }
+  return KIND_VALUES.includes(kind) ? [`higgsfield-axi models --kind ${kind}`] : ["higgsfield-axi models"];
 }
 
 export const modelsCommand: CommandModule = {
@@ -45,14 +57,7 @@ export const modelsCommand: CommandModule = {
     if (id !== undefined) {
       const stdout = await hf(["model", "get", id, "--json"]);
       print(emitFromJson("model", stdout));
-      const kind = generateKind(stdout);
-      print(
-        helpBlock(
-          kind
-            ? [`higgsfield-axi ${kind} "<prompt>" --model ${id}`]
-            : [`higgsfield-axi image "<prompt>" --model ${id}`, `higgsfield-axi video "<prompt>" --model ${id}`],
-        ),
-      );
+      print(helpBlock(modelNextSteps(id, mediaKind(stdout))));
       return 0;
     }
 

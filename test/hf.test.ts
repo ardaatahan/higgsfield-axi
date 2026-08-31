@@ -187,6 +187,16 @@ describe("image generation", () => {
     expect(r.stdout).not.toContain("status: unknown");
   });
 
+  it("parses the job JSON even when the CLI prints progress lines before it", async () => {
+    const r = await run(["image", "a chair", "--no-wait"], {
+      MOCK_HF_JOB_RAW: `Submitting job...\nWaiting for job (10%)\n${JSON.stringify({ job_id: "job-noisy", status: "queued" })}\n`,
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("job: job-noisy");
+    expect(r.stdout).toContain("status: queued");
+    expect(r.stdout).not.toContain("malformed");
+  });
+
   it("fails loudly when the job JSON parses but carries no identifiable job id", async () => {
     const r = await run(["image", "a chair"], {
       MOCK_HF_JOB_RAW: JSON.stringify({ job: { id: "job-abc", status: "completed", result_url: "https://cdn/x.png" } }),
@@ -281,7 +291,17 @@ describe("job lifecycle commands", () => {
         MOCK_HF_JOB_URLS: JSON.stringify([`${base}/clip.mp4`]),
       });
       expect(r.status).toBe(0);
-      expect(invocations()[0]).toEqual(["generate", "wait", "job-xyz", "--timeout", "5m", "--interval", "2s", "--json"]);
+      expect(invocations()[0]).toEqual([
+        "generate",
+        "wait",
+        "job-xyz",
+        "--timeout",
+        "5m",
+        "--interval",
+        "2s",
+        "--quiet",
+        "--json",
+      ]);
       const file = join(workDir, "higgsfield-out", "job-xyz.mp4");
       expect(existsSync(file)).toBe(true);
     } finally {
@@ -437,19 +457,36 @@ describe("models", () => {
     expect(video.stdout).not.toContain('higgsfield-axi image "<prompt>" --model veo3_1');
   });
 
-  it("suggests both commands when the model's media kind is absent or unrecognized", async () => {
+  it("suggests both commands only when the model's media kind cannot be read at all", async () => {
     const absent = await run(["models", "nano_banana_2"], {
       MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "nano_banana_2" }),
     });
-    const unrecognized = await run(["models", "some_model"], {
-      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "some_model", media: "image_to_video" }),
+    const unparseable = await run(["models", "some_model"], {
+      MOCK_HF_MODEL_GET: "not json at all",
     });
-    expect(absent.status).toBe(0);
-    expect(absent.stdout).toContain('higgsfield-axi image "<prompt>" --model nano_banana_2');
-    expect(absent.stdout).toContain('higgsfield-axi video "<prompt>" --model nano_banana_2');
-    expect(unrecognized.status).toBe(0);
-    expect(unrecognized.stdout).toContain('higgsfield-axi image "<prompt>" --model some_model');
-    expect(unrecognized.stdout).toContain('higgsfield-axi video "<prompt>" --model some_model');
+    for (const [r, id] of [[absent, "nano_banana_2"], [unparseable, "some_model"]] as const) {
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain(`higgsfield-axi image "<prompt>" --model ${id}`);
+      expect(r.stdout).toContain(`higgsfield-axi video "<prompt>" --model ${id}`);
+    }
+  });
+
+  it("suggests neither image nor video for a model whose kind this tool cannot generate", async () => {
+    const audio = await run(["models", "some_audio_model"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "some_audio_model", media: "audio" }),
+    });
+    expect(audio.status).toBe(0);
+    expect(audio.stdout).not.toContain("higgsfield-axi image");
+    expect(audio.stdout).not.toContain("higgsfield-axi video");
+    expect(audio.stdout).toContain("higgsfield-axi models --kind audio");
+
+    const other = await run(["models", "some_3d_model"], {
+      MOCK_HF_MODEL_GET: JSON.stringify({ job_type: "some_3d_model", media: "3d" }),
+    });
+    expect(other.status).toBe(0);
+    expect(other.stdout).not.toContain("higgsfield-axi image");
+    expect(other.stdout).not.toContain("higgsfield-axi video");
+    expect(other.stdout).toContain("higgsfield-axi models");
   });
 
   it("maps an unknown model id to a structured error", async () => {
