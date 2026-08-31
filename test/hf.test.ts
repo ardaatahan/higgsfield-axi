@@ -506,7 +506,10 @@ describe("job lifecycle commands", () => {
     });
     expect(r.status).toBe(1);
     expect(r.stdout).toContain(`error: creating the output directory ${notADir} failed:`);
-    expect(r.stdout).toContain(`suggestion: re-fetch outputs with: higgsfield-axi wait job-x --out '${notADir}'`);
+    const suggestion = r.stdout.split("\n").find((l) => l.startsWith("suggestion:"))!;
+    expect(suggestion).toContain("higgsfield-axi wait job-x");
+    expect(suggestion).toContain("--out <writable-dir>");
+    expect(suggestion).not.toContain(notADir);
     expect(r.stdout).not.toContain("unexpected failure");
     expect(r.stderr).toBe("");
   });

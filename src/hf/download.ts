@@ -46,7 +46,10 @@ export async function downloadOutputs(
   try {
     await mkdir(outDir, { recursive: true });
   } catch (err) {
-    throw new AxiError(`creating the output directory ${outDir} failed: ${errorMessage(err)}`, retry);
+    throw new AxiError(
+      `creating the output directory ${outDir} failed: ${errorMessage(err)}`,
+      `--out must name a writable directory; once it does, re-fetch outputs with: higgsfield-axi wait ${jobId} --out <writable-dir>`,
+    );
   }
   const files: DownloadedFile[] = [];
   for (let i = 0; i < urls.length; i++) {
