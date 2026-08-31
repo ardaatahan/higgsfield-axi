@@ -37,6 +37,7 @@ export async function downloadOutputs(
   outDir: string,
 ): Promise<DownloadedFile[]> {
   if (urls.length === 0) return [];
+  const retry = `re-fetch outputs with: higgsfield-axi wait ${jobId} --out ${outDir}`;
   await mkdir(outDir, { recursive: true });
   const files: DownloadedFile[] = [];
   for (let i = 0; i < urls.length; i++) {
@@ -48,13 +49,13 @@ export async function downloadOutputs(
       const message = err instanceof Error ? err.message : String(err);
       throw new AxiError(
         `downloading output ${i + 1} failed: ${message}`,
-        `re-fetch outputs with: higgsfield-axi status ${jobId}`,
+        retry,
       );
     }
     if (!res.ok) {
       throw new AxiError(
         `downloading output ${i + 1} failed: HTTP ${res.status}`,
-        `re-fetch outputs with: higgsfield-axi status ${jobId}`,
+        retry,
       );
     }
     const contentType = (res.headers.get("content-type") ?? "").split(";")[0]!.trim();

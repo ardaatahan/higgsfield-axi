@@ -36,20 +36,24 @@ export function parseJob(data: unknown): JobResult {
 const RAW_PREVIEW_LIMIT = 300;
 
 /**
- * Parse a `--json` job payload, or fail loudly. Output the CLI never meant as
- * job JSON must not be smoothed into a plausible-looking "unknown" success:
- * the raw text travels in the error so the caller can see what came back.
+ * Parse a `--json` job payload, or fail loudly. Output that does not carry an
+ * identifiable job must not be smoothed into a plausible-looking "unknown"
+ * success - whether it failed to parse at all or merely came back in an
+ * unexpected shape. The raw text travels in the error so the caller can see
+ * what came back.
  */
 export function parseJobOutput(stdout: string): JobResult {
   const data = parseJsonLoose(stdout);
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
+  const job =
+    data && typeof data === "object" && !Array.isArray(data) ? parseJob(data) : undefined;
+  if (!job || !job.jobId) {
     const raw = stdout.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
     throw new AxiError(
       `higgsfield returned a malformed response: ${raw || "(no output)"}`,
       "retry the command; if it persists, run the same `higgsfield generate` command directly to inspect its output",
     );
   }
-  return parseJob(data);
+  return job;
 }
 
 // The CLI does not publish a status enum, so failure is detected by keyword

@@ -187,6 +187,17 @@ describe("image generation", () => {
     expect(r.stdout).not.toContain("status: unknown");
   });
 
+  it("fails loudly when the job JSON parses but carries no identifiable job id", async () => {
+    const r = await run(["image", "a chair"], {
+      MOCK_HF_JOB_RAW: JSON.stringify({ job: { id: "job-abc", status: "completed", result_url: "https://cdn/x.png" } }),
+    });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+    expect(r.stdout).toContain("suggestion:");
+    expect(r.stdout).not.toContain("status: unknown");
+    expect(existsSync(join(workDir, "higgsfield-out"))).toBe(false);
+  });
+
   it("exits 1 and reports the failure when the job's terminal status indicates failure", async () => {
     const r = await run(["image", "a chair"], { MOCK_HF_JOB_STATUS: "failed" });
     expect(r.status).toBe(1);
@@ -292,6 +303,22 @@ describe("job lifecycle commands", () => {
     expect(r.status).toBe(1);
     expect(r.stdout).toContain("error: higgsfield returned a malformed response");
     expect(r.stdout).toContain("not json at all");
+  });
+
+  it("suggests a command that actually re-downloads when fetching an output fails", async () => {
+    let asset: AssetServer | undefined;
+    try {
+      asset = new AssetServer();
+      const base = await asset.start();
+      const r = await run(["wait", "job-x", "--out", "assets"], {
+        MOCK_HF_JOB_URLS: JSON.stringify([`${base}/gone.png`]),
+      });
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain("error: downloading output 1 failed: HTTP 404");
+      expect(r.stdout).toContain("suggestion: re-fetch outputs with: higgsfield-axi wait job-x --out assets");
+    } finally {
+      await asset?.stop();
+    }
   });
 
   it("there is no cancel command (the upstream CLI does not expose one)", async () => {
