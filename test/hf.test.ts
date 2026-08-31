@@ -301,6 +301,26 @@ describe("image generation", () => {
     expect(submitOnly.stdout).not.toContain("do not resubmit the same prompt");
   });
 
+  it("does not claim a job may exist when the CLI never ran", async () => {
+    const r = await run(["image", "a chair"], { HIGGSFIELD_AXI_BIN: join(workDir, "nonexistent-higgsfield-binary") });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("not installed");
+    expect(r.stdout).toContain("npm install -g @higgsfield/cli");
+    expect(r.stdout).not.toContain("do not resubmit the same prompt");
+    expect(r.stdout).not.toContain("higgsfield generate list");
+  });
+
+  it("rejects passthrough flags this tool sets itself", async () => {
+    for (const [flag, value] of [["--prompt", "different"], ["--wait", undefined], ["--json", undefined]] as const) {
+      const args = ["image", "a chair", flag];
+      if (value) args.push(value);
+      const r = await run(args);
+      expect(r.status).toBe(2);
+      expect(r.stdout).toContain(`error: ${flag} is set by higgsfield-axi and cannot be forwarded to 'image'`);
+      expect(invocations()).toHaveLength(0);
+    }
+  });
+
   it("names the unsupported job-set shape instead of calling it malformed", async () => {
     const r = await run(["image", "a chair", "--no-wait"], {
       MOCK_HF_JOB_RAW: JSON.stringify({ job_set_id: "set-1", job_ids: ["j1", "j2"] }),
@@ -329,7 +349,7 @@ describe("image generation", () => {
       MOCK_HF_JOB_URLS: "[]",
     });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("outputs: 0");
+    expect(r.stdout).toContain("files[0]{path,bytes}:");
     expect(r.stdout).toContain("higgsfield-axi wait job-empty --out 'higgsfield-out'");
     expect(r.stdout).toContain("higgsfield-axi status job-empty");
     expect(r.stdout).not.toContain('higgsfield-axi image "<prompt>"');
@@ -351,9 +371,12 @@ describe("image generation", () => {
     expect(invocations()).toHaveLength(0);
   });
 
-  it("exits 1 and reports the failure when the job's terminal status indicates failure", async () => {
+  it("exits 1, reports the failure, and still offers a next step", async () => {
     const r = await run(["image", "a chair"], { MOCK_HF_JOB_STATUS: "failed" });
     expect(r.status).toBe(1);
+    expect(r.stdout).toMatch(/(^|\n)help\[/);
+    expect(r.stdout).toContain("higgsfield-axi models nano_banana_2");
+    expect(r.stdout).toContain('higgsfield-axi image "<prompt>" --model nano_banana_2');
     expect(r.stdout).toContain("status: failed");
     expect(r.stdout).toContain("error: failed");
   });
@@ -495,7 +518,7 @@ describe("job lifecycle commands", () => {
     const r = await run(["status", "job-queued"], { MOCK_HF_JOB_STATUS: "queued", MOCK_HF_JOB_URLS: "[]" });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("status: queued");
-    expect(r.stdout).toContain("outputs: 0");
+    expect(r.stdout).toContain("outputs[0]{url}:");
   });
 
   it("status on a failed job suggests re-generating instead of waiting", async () => {
@@ -527,6 +550,27 @@ describe("job lifecycle commands", () => {
       expect(r.status).toBe(0);
       expect(r.stdout).toContain("job: job-known");
       expect(r.stdout).toContain("status: completed");
+      const file = join(workDir, "higgsfield-out", "job-known.mp4");
+      expect(existsSync(file)).toBe(true);
+      expect(readFileSync(file)).toEqual(mp4);
+    } finally {
+      await asset?.stop();
+    }
+  });
+
+  it("wait resolves an id-less payload that carries a job_set_id via the requested id", async () => {
+    let asset: AssetServer | undefined;
+    try {
+      asset = new AssetServer();
+      const base = await asset.start();
+      const mp4 = Buffer.from("set-shaped-single");
+      asset.set("/x.mp4", "video/mp4", mp4);
+      const r = await run(["wait", "job-known"], {
+        MOCK_HF_JOB_RAW: JSON.stringify({ job_set_id: "set-9", status: "completed", result_url: `${base}/x.mp4` }),
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("job: job-known");
+      expect(r.stdout).not.toContain("batch (multi-job) generation");
       const file = join(workDir, "higgsfield-out", "job-known.mp4");
       expect(existsSync(file)).toBe(true);
       expect(readFileSync(file)).toEqual(mp4);

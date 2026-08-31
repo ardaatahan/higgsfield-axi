@@ -6,8 +6,8 @@ import type { Parsed } from "../cli/args.js";
 import type { FlagSpec } from "../cli/spec.js";
 import { emitKV, emitList, print } from "../output/toon.js";
 import { helpBlock, waitSuggestion } from "../output/suggest.js";
-import { hf } from "../hf/exec.js";
-import { AxiError, UsageError } from "../output/errors.js";
+import { HfExitError, hf } from "../hf/exec.js";
+import { UsageError } from "../output/errors.js";
 import { downloadOutputs } from "../hf/download.js";
 import { DEFAULT_MODELS } from "../hf/defaults.js";
 import { isFailureStatus, parseJobOutput } from "../hf/job.js";
@@ -25,6 +25,11 @@ const COMMON_FLAGS: FlagSpec[] = [
 ];
 
 const WAIT_TUNING_FLAGS = ["wait-timeout", "wait-interval"];
+
+// Flags this command sets itself on the `generate create` argv; forwarding a
+// second copy would leave the vendor to pick a winner, and for --prompt that
+// means billing a generation the caller did not ask for.
+const RESERVED_PASSTHROUGH = ["prompt", "wait", "json"];
 
 function buildCreateArgs(model: string, prompt: string, parsed: Parsed): string[] {
   const args = ["generate", "create", model, "--prompt", prompt];
@@ -62,10 +67,7 @@ export function renderJobResult(
     kv.push(["error", job.status]);
     return { text: emitKV(kv), exitCode: 1 };
   }
-  const parts = [emitKV(kv)];
-  parts.push(
-    files.length > 0 ? emitList("files", files, ["path", "bytes"]) : emitKV([["outputs", 0]]),
-  );
+  const parts = [emitKV(kv), emitList("files", files, ["path", "bytes"])];
   return { text: parts.join("\n"), exitCode: 0 };
 }
 
@@ -79,7 +81,7 @@ async function submitJob(model: string, prompt: string, parsed: Parsed): Promise
   try {
     return await hf(buildCreateArgs(model, prompt, parsed));
   } catch (err) {
-    if (parsed.flags["no-wait"] || !(err instanceof AxiError)) throw err;
+    if (parsed.flags["no-wait"] || !(err instanceof HfExitError)) throw err;
     err.suggestion = err.suggestion ? `${err.suggestion}; ${CREATE_RECOVERY}` : CREATE_RECOVERY;
     throw err;
   }
@@ -93,6 +95,13 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
     );
   }
   const prompt = parsed.positionals[0]!;
+  const reserved = parsed.passthrough.filter((f) => RESERVED_PASSTHROUGH.includes(f.name)).map((f) => `--${f.name}`);
+  if (reserved.length > 0) {
+    throw new UsageError(
+      `${reserved.join(", ")} ${reserved.length > 1 ? "are" : "is"} set by higgsfield-axi and cannot be forwarded to '${kind}'`,
+      `pass the prompt as the first argument and control waiting with --no-wait/--wait-timeout/--wait-interval: higgsfield-axi ${kind} "<prompt>"`,
+    );
+  }
   if (parsed.flags["no-wait"]) {
     const tuning = WAIT_TUNING_FLAGS.filter((name) => parsed.flags[name] !== undefined);
     if (tuning.length > 0) {
@@ -115,16 +124,17 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
   const files = !isFailureStatus(job.status) && job.urls.length > 0 ? await downloadOutputs(job.jobId, job.urls, outDir) : [];
   const { text, exitCode } = renderJobResult(job, files, model);
   print(text);
-  if (exitCode === 0) {
-    const noOutputs = files.length === 0;
-    print(
-      helpBlock(
-        noOutputs
-          ? nextStepsAfterSubmit(job.jobId, outDir)
-          : [`higgsfield-axi ${kind} "<prompt>" --model ${model}`, "higgsfield-axi models --kind " + kind],
-      ),
-    );
+  if (exitCode !== 0) {
+    print(helpBlock([`higgsfield-axi models ${model}`, `higgsfield-axi ${kind} "<prompt>" --model ${model}`]));
+    return exitCode;
   }
+  print(
+    helpBlock(
+      files.length === 0
+        ? nextStepsAfterSubmit(job.jobId, outDir)
+        : [`higgsfield-axi ${kind} "<prompt>" --model ${model}`, "higgsfield-axi models --kind " + kind],
+    ),
+  );
   return exitCode;
 }
 

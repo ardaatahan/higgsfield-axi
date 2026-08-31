@@ -105,10 +105,10 @@ npx -y axi-axi validate "node bin/higgsfield-axi.js" --dir .   # AXI compliance 
 The test suite covers argv construction for every subcommand, `--json` output parsing, passthrough-flag forwarding, downloads, and error mapping against a mocked `higgsfield` binary (`test/helpers/mock-hf.mjs`). It does not need the real CLI installed. A live smoke test (needs the real `higgsfield` CLI installed and logged in) is the one thing not covered by CI; after installing and authenticating it, verify with:
 
 ```sh
-higgsfield-axi image "a red apple on a white table" --no-wait
+higgsfield-axi image "a red apple on a white table"
 ```
 
-That smoke test matters: the exact JSON shape `generate create` returns is the one part of the vendor contract not verified against a live account. Both plausible shapes are handled - a single job object, and a one-element `job_ids` array (with or without `job_set_id`) - and anything else is reported as an explicit error rather than a silent wrong result, so a mismatch shows up as a clear message on the first real run.
+Run it in the default waiting form, not with `--no-wait`: both bill the same generation, but only the waiting form exercises the whole contract - submit, wait, read the result URLs, download, print a local path. The exact JSON shape `generate create` returns is the one part of the vendor contract not verified against a live account. A job id under an unexpected key fails loudly (the tool reports a malformed response); a result URL under an unexpected key does not - watch for `status: completed` together with an empty `files[0]{path,bytes}:` block, which means the result-URL field is named something other than `urls`/`result_url`.
 
 Test-only environment hook: `HIGGSFIELD_AXI_BIN` overrides the `higgsfield` binary higgsfield-axi shells out to, so tests can point it at a mock.
 

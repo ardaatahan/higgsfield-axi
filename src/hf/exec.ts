@@ -62,8 +62,14 @@ function rewriteHint(hint: string): string {
   return hint.replace(/\bhf\b/g, HF_BIN);
 }
 
+/**
+ * The vendor CLI ran and exited non-zero, as opposed to never starting at all.
+ * Only this case can have accepted (and billed) work before failing.
+ */
+export class HfExitError extends AxiError {}
+
 /** The CLI prints "Error: ...\nHint: ..." to stderr on failure, any --json. */
-function parseHfError(stderr: string, code: number): AxiError {
+function parseHfError(stderr: string, code: number): HfExitError {
   const lines = stderr
     .split("\n")
     .map((l) => l.trim())
@@ -72,7 +78,7 @@ function parseHfError(stderr: string, code: number): AxiError {
   const hintLine = lines.find((l) => l.startsWith("Hint:"));
   const message = errLine ? errLine.replace(/^Error:\s*/, "") : stderr.trim() || `higgsfield exited with code ${code}`;
   const suggestion = hintLine ? rewriteHint(hintLine.replace(/^Hint:\s*/, "")) : undefined;
-  return new AxiError(message, suggestion);
+  return new HfExitError(message, suggestion);
 }
 
 /** Run the CLI and return stdout, or throw a structured AxiError on failure. */
