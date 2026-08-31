@@ -7,7 +7,7 @@ import type { FlagSpec } from "../cli/spec.js";
 import { emitKV, emitList, print } from "../output/toon.js";
 import { helpBlock, waitSuggestion } from "../output/suggest.js";
 import { hf } from "../hf/exec.js";
-import { UsageError } from "../output/errors.js";
+import { AxiError, UsageError } from "../output/errors.js";
 import { downloadOutputs } from "../hf/download.js";
 import { DEFAULT_MODELS } from "../hf/defaults.js";
 import { isFailureStatus, parseJobOutput } from "../hf/job.js";
@@ -69,6 +69,22 @@ export function renderJobResult(
   return { text: parts.join("\n"), exitCode: 0 };
 }
 
+/**
+ * `generate create --wait` submits the job before it blocks polling, so a
+ * failure from that call - a wait timeout above all - can leave a job that
+ * exists and is billed. The vendor error carries no id, so the caller is told
+ * how to find the job instead of being left to resubmit it.
+ */
+async function submitJob(model: string, prompt: string, parsed: Parsed): Promise<string> {
+  try {
+    return await hf(buildCreateArgs(model, prompt, parsed));
+  } catch (err) {
+    if (parsed.flags["no-wait"] || !(err instanceof AxiError)) throw err;
+    err.suggestion = err.suggestion ? `${err.suggestion}; ${CREATE_RECOVERY}` : CREATE_RECOVERY;
+    throw err;
+  }
+}
+
 async function submitAndReport(kind: "image" | "video", model: string, parsed: Parsed): Promise<number> {
   if (parsed.positionals.length > 1) {
     throw new UsageError(
@@ -87,7 +103,7 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
     }
   }
   const outDir = String(parsed.flags["out"]);
-  const stdout = await hf(buildCreateArgs(model, prompt, parsed));
+  const stdout = await submitJob(model, prompt, parsed);
   const job = parseJobOutput(stdout, { malformedSuggestion: CREATE_RECOVERY });
 
   if (parsed.flags["no-wait"]) {

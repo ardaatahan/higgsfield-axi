@@ -108,6 +108,8 @@ The test suite covers argv construction for every subcommand, `--json` output pa
 higgsfield-axi image "a red apple on a white table" --no-wait
 ```
 
+That smoke test matters: the exact JSON shape `generate create` returns is the one part of the vendor contract not verified against a live account. Both plausible shapes are handled - a single job object, and a one-element `job_ids` array (with or without `job_set_id`) - and anything else is reported as an explicit error rather than a silent wrong result, so a mismatch shows up as a clear message on the first real run.
+
 Test-only environment hook: `HIGGSFIELD_AXI_BIN` overrides the `higgsfield` binary higgsfield-axi shells out to, so tests can point it at a mock.
 
 `axi-axi validate` passes all 12 checks with 4 advisory notes (VA1-VA4: idempotent no-ops, long-text truncation, zero-result messaging, list `--fields` escape hatch) - these are non-blocking suggestions, not failures, and are left as-is since `models`/`model` output already passes through the CLI's own `--json` shape faithfully rather than reshaping it.

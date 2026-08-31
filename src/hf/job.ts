@@ -75,7 +75,13 @@ export function parseJobOutput(stdout: string, opts: ParseJobOptions = {}): JobR
     const record = data as Record<string, unknown>;
     const job = parseJob(record);
     if (job.jobId) return job;
-    if (record["job_set_id"] !== undefined || Array.isArray(record["job_ids"])) {
+    const jobIds = Array.isArray(record["job_ids"]) ? (record["job_ids"] as unknown[]) : undefined;
+    if (jobIds?.length === 1) {
+      const onlyId = idField(jobIds[0]);
+      if (onlyId) return { ...job, jobId: onlyId };
+    }
+    const isJobSet = (jobIds ? jobIds.length > 1 : record["job_set_id"] !== undefined);
+    if (isJobSet) {
       throw new AxiError(
         "higgsfield returned a job set: batch (multi-job) generation is not supported by higgsfield-axi yet",
         "run `higgsfield generate list` to see the jobs in the set, then `higgsfield generate get <job-id>` for each one",

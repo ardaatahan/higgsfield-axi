@@ -261,6 +261,46 @@ describe("image generation", () => {
     }
   });
 
+  it("resolves a single-element job_ids response exactly like a single job object", async () => {
+    let asset: AssetServer | undefined;
+    try {
+      asset = new AssetServer();
+      const base = await asset.start();
+      const png = Buffer.from("one-of-one");
+      asset.set("/out.png", "image/png", png);
+      const r = await run(["image", "a chair"], {
+        MOCK_HF_JOB_RAW: JSON.stringify({
+          job_set_id: "set-1",
+          job_ids: ["job-only"],
+          status: "completed",
+          urls: [`${base}/out.png`],
+        }),
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("job: job-only");
+      expect(r.stdout).toContain("status: completed");
+      expect(r.stdout).toContain("files[1]{path,bytes}:");
+      const file = join(workDir, "higgsfield-out", "job-only.png");
+      expect(existsSync(file)).toBe(true);
+      expect(readFileSync(file)).toEqual(png);
+    } finally {
+      await asset?.stop();
+    }
+  });
+
+  it("tells the user how to recover the submitted job when a waited create fails", async () => {
+    const waited = await run(["image", "a chair"], { MOCK_HF_FAIL_WORKSPACE: "1" });
+    expect(waited.status).toBe(1);
+    expect(waited.stdout).toContain("error: No workspace selected.");
+    expect(waited.stdout).toContain("do not resubmit the same prompt");
+    expect(waited.stdout).toContain("higgsfield generate list");
+
+    const submitOnly = await run(["image", "a chair", "--no-wait"], { MOCK_HF_FAIL_WORKSPACE: "1" });
+    expect(submitOnly.status).toBe(1);
+    expect(submitOnly.stdout).toContain("error: No workspace selected.");
+    expect(submitOnly.stdout).not.toContain("do not resubmit the same prompt");
+  });
+
   it("names the unsupported job-set shape instead of calling it malformed", async () => {
     const r = await run(["image", "a chair", "--no-wait"], {
       MOCK_HF_JOB_RAW: JSON.stringify({ job_set_id: "set-1", job_ids: ["j1", "j2"] }),
@@ -602,16 +642,28 @@ describe("models", () => {
 
   it("rejects non-JSON and empty catalog output instead of reporting it as a catalog", async () => {
     const cases = [
-      { args: ["models"], env: { MOCK_HF_MODEL_LIST: "A new Higgsfield CLI is available: 1.1.24 -> 1.2.0" } },
-      { args: ["models"], env: { MOCK_HF_MODEL_LIST: "" } },
-      { args: ["models", "nano_banana_2"], env: { MOCK_HF_MODEL_GET: "not json at all" } },
-      { args: ["models", "nano_banana_2"], env: { MOCK_HF_MODEL_GET: "" } },
+      {
+        args: ["models", "--kind", "video"],
+        env: { MOCK_HF_MODEL_LIST: "A new Higgsfield CLI is available: 1.1.24 -> 1.2.0" },
+        recovery: "`higgsfield model list --video --json`",
+      },
+      { args: ["models"], env: { MOCK_HF_MODEL_LIST: "" }, recovery: "`higgsfield model list --json`" },
+      {
+        args: ["models", "nano_banana_2"],
+        env: { MOCK_HF_MODEL_GET: "not json at all" },
+        recovery: "`higgsfield model get nano_banana_2 --json`",
+      },
+      {
+        args: ["models", "nano_banana_2"],
+        env: { MOCK_HF_MODEL_GET: "" },
+        recovery: "`higgsfield model get nano_banana_2 --json`",
+      },
     ];
-    for (const { args, env } of cases) {
+    for (const { args, env, recovery } of cases) {
       const r = await run(args, env);
       expect(r.status).toBe(1);
       expect(r.stdout).toContain("error: higgsfield returned a malformed response");
-      expect(r.stdout).toContain("suggestion:");
+      expect(r.stdout).toContain(recovery);
       expect(r.stdout).not.toContain("models[1]");
     }
   });
