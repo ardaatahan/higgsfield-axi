@@ -2,6 +2,14 @@
 
 import { emitBlock } from "./toon.js";
 
+/**
+ * Quotes a value interpolated into a suggested command, so that a path with
+ * whitespace stays a single argument when the suggestion is run verbatim.
+ */
+export function quoteArg(value: string): string {
+  return `"${value.replace(/"/g, '\\"')}"`;
+}
+
 export function helpBlock(lines: string[]): string {
   return emitBlock("help", lines);
 }

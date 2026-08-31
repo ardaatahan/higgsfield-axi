@@ -110,7 +110,7 @@ describe("image generation", () => {
     const r = await run(["image", "a chair", "--no-wait"], { MOCK_HF_JOB_ID: "job-nowait" });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("job: job-nowait");
-    expect(r.stdout).toContain("higgsfield-axi wait job-nowait --out higgsfield-out");
+    expect(r.stdout).toContain('higgsfield-axi wait job-nowait --out "higgsfield-out"');
 
     const calls = invocations();
     expect(calls[0]).toEqual(["generate", "create", "nano_banana_2", "--prompt", "a chair", "--json"]);
@@ -122,7 +122,15 @@ describe("image generation", () => {
       MOCK_HF_JOB_ID: "job-outdir",
     });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("higgsfield-axi wait job-outdir --out ./assets");
+    expect(r.stdout).toContain('higgsfield-axi wait job-outdir --out "./assets"');
+  });
+
+  it("quotes an --out directory containing spaces in the suggested wait command", async () => {
+    const r = await run(["image", "a chair", "--no-wait", "--out", "./my assets"], {
+      MOCK_HF_JOB_ID: "job-spaced",
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('higgsfield-axi wait job-spaced --out "./my assets"');
   });
 
   it("uses --model to override the default and forwards unknown flags to the CLI verbatim", async () => {
@@ -235,7 +243,7 @@ describe("image generation", () => {
     });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("outputs: 0");
-    expect(r.stdout).toContain("higgsfield-axi wait job-empty --out higgsfield-out");
+    expect(r.stdout).toContain('higgsfield-axi wait job-empty --out "higgsfield-out"');
     expect(r.stdout).toContain("higgsfield-axi status job-empty");
     expect(r.stdout).not.toContain('higgsfield-axi image "<prompt>"');
   });
@@ -375,7 +383,7 @@ describe("job lifecycle commands", () => {
       });
       expect(r.status).toBe(1);
       expect(r.stdout).toContain("error: downloading output 1 failed: HTTP 404");
-      expect(r.stdout).toContain("suggestion: re-fetch outputs with: higgsfield-axi wait job-x --out assets");
+      expect(r.stdout).toContain('suggestion: re-fetch outputs with: higgsfield-axi wait job-x --out "assets"');
     } finally {
       await asset?.stop();
     }
@@ -393,7 +401,7 @@ describe("job lifecycle commands", () => {
   it("status on an unfinished job still suggests waiting", async () => {
     const r = await run(["status", "job-q"], { MOCK_HF_JOB_STATUS: "queued" });
     expect(r.status).toBe(0);
-    expect(r.stdout).toContain("higgsfield-axi wait job-q --out higgsfield-out");
+    expect(r.stdout).toContain('higgsfield-axi wait job-q --out "higgsfield-out"');
   });
 
   it("wait falls back to the requested job id when the CLI's response omits it", async () => {
