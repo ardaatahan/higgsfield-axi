@@ -87,6 +87,8 @@ higgsfield-axi wait <job-id> --out ./assets         # poll to completion, downlo
 
 There is no `cancel` command: the underlying `higgsfield` CLI does not expose job cancellation (verified against `higgsfield generate --help`).
 
+Batch generation (one `generate create` call producing a set of jobs, which batch-producing flags such as `--n` may trigger on some models) is a known v1 limitation: `image`/`video` handle a single job per call, and a job-set response is reported as an explicit unsupported-shape error naming the vendor commands (`higgsfield generate list`, `higgsfield generate get <job-id>`) to drive the set directly.
+
 ## Output downloads
 
 By default `image`, `video`, and `wait` wait for the job to finish (via the CLI's own `--wait` / `generate wait`) and download every output to `./higgsfield-out/` (override with `--out <dir>`), named `<job-id>.<ext>` (`-1`, `-2`, ... suffixes when there are several). With `--no-wait` you get the job id immediately and resume later with `wait`. A failed/rejected terminal status exits `1`.

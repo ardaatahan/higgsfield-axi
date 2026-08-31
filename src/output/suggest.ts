@@ -10,6 +10,11 @@ export function quoteArg(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
+/** The one place the `wait` follow-up command is spelled out. */
+export function waitSuggestion(jobId: string, outDir: string): string {
+  return `higgsfield-axi wait ${jobId} --out ${quoteArg(outDir)}`;
+}
+
 export function helpBlock(lines: string[]): string {
   return emitBlock("help", lines);
 }

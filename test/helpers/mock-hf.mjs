@@ -12,6 +12,16 @@ const args = process.argv.slice(2);
 const logPath = process.env.MOCK_HF_LOG;
 if (logPath) appendFileSync(logPath, JSON.stringify(args) + "\n");
 
+// MOCK_HF_ENV_LOG captures the environment higgsfield-axi spawns us with, so a
+// test can assert what the wrapper passes down rather than only its argv.
+const envLogPath = process.env.MOCK_HF_ENV_LOG;
+if (envLogPath) {
+  appendFileSync(
+    envLogPath,
+    JSON.stringify({ HIGGSFIELD_NO_UPDATE_CHECK: process.env.HIGGSFIELD_NO_UPDATE_CHECK ?? null }) + "\n",
+  );
+}
+
 function fail(message, hint, code) {
   process.stderr.write(`Error: ${message}\n`);
   if (hint) process.stderr.write(`Hint: ${hint}\n`);

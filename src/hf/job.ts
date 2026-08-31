@@ -47,9 +47,16 @@ const RAW_PREVIEW_LIMIT = 300;
 export function parseJobOutput(stdout: string, knownId?: string): JobResult {
   const data = parseJsonLoose(stdout);
   if (data && typeof data === "object" && !Array.isArray(data)) {
-    const job = parseJob(data);
+    const record = data as Record<string, unknown>;
+    const job = parseJob(record);
     if (job.jobId) return job;
-    if (knownId && typeof (data as Record<string, unknown>)["status"] === "string") {
+    if (record["job_set_id"] !== undefined || Array.isArray(record["job_ids"])) {
+      throw new AxiError(
+        "higgsfield returned a job set: batch (multi-job) generation is not supported by higgsfield-axi yet",
+        "run `higgsfield generate list` to see the jobs in the set, then `higgsfield generate get <job-id>` for each one",
+      );
+    }
+    if (knownId && typeof record["status"] === "string") {
       return { ...job, jobId: knownId };
     }
   }

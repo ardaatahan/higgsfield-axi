@@ -5,7 +5,7 @@ import type { CommandModule } from "../cli/router.js";
 import type { Parsed } from "../cli/args.js";
 import type { FlagSpec } from "../cli/spec.js";
 import { emitKV, emitList, print } from "../output/toon.js";
-import { helpBlock, quoteArg } from "../output/suggest.js";
+import { helpBlock, waitSuggestion } from "../output/suggest.js";
 import { hf } from "../hf/exec.js";
 import { downloadOutputs } from "../hf/download.js";
 import { DEFAULT_MODELS } from "../hf/defaults.js";
@@ -39,7 +39,7 @@ function buildCreateArgs(model: string, prompt: string, parsed: Parsed): string[
 }
 
 function nextStepsAfterSubmit(jobId: string, outDir: string): string[] {
-  return [`higgsfield-axi wait ${jobId} --out ${quoteArg(outDir)}`, `higgsfield-axi status ${jobId}`];
+  return [waitSuggestion(jobId, outDir), `higgsfield-axi status ${jobId}`];
 }
 
 /** Shared by image/video submission and the `wait` command's terminal report. */

@@ -225,6 +225,17 @@ describe("image generation", () => {
     }
   });
 
+  it("names the unsupported job-set shape instead of calling it malformed", async () => {
+    const r = await run(["image", "a chair", "--no-wait"], {
+      MOCK_HF_JOB_RAW: JSON.stringify({ job_set_id: "set-1", job_ids: ["j1", "j2"] }),
+    });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("error: higgsfield returned a job set");
+    expect(r.stdout).toContain("batch (multi-job) generation is not supported");
+    expect(r.stdout).not.toContain("malformed response");
+    expect(r.stdout).toContain("higgsfield generate get <job-id>");
+  });
+
   it("fails loudly when the job JSON parses but carries no identifiable job id", async () => {
     const r = await run(["image", "a chair"], {
       MOCK_HF_JOB_RAW: JSON.stringify({ job: { id: "job-abc", status: "completed", result_url: "https://cdn/x.png" } }),
@@ -582,6 +593,20 @@ describe("environment and error mapping", () => {
       expect(r.stderr).not.toContain("super-secret-token-value");
       expect(r.stdout).not.toContain("mock-secret-token-abc123");
     }
+  });
+});
+
+describe("vendor CLI environment", () => {
+  it("disables the vendor's update check for every invocation", async () => {
+    const envLog = join(workDir, "mock-hf-env.log");
+    const r = await run(["models"], { MOCK_HF_ENV_LOG: envLog });
+    expect(r.status).toBe(0);
+    const seen = readFileSync(envLog, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line) as { HIGGSFIELD_NO_UPDATE_CHECK: string | null });
+    expect(seen.length).toBeGreaterThan(0);
+    for (const env of seen) expect(env.HIGGSFIELD_NO_UPDATE_CHECK).toBe("1");
   });
 });
 

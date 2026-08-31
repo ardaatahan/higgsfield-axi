@@ -5,7 +5,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { AxiError } from "../output/errors.js";
-import { quoteArg } from "../output/suggest.js";
+import { waitSuggestion } from "../output/suggest.js";
 
 const EXT_BY_CONTENT_TYPE: Record<string, string> = {
   "image/jpeg": ".jpg",
@@ -38,7 +38,7 @@ export async function downloadOutputs(
   outDir: string,
 ): Promise<DownloadedFile[]> {
   if (urls.length === 0) return [];
-  const retry = `re-fetch outputs with: higgsfield-axi wait ${jobId} --out ${quoteArg(outDir)}`;
+  const retry = `re-fetch outputs with: ${waitSuggestion(jobId, outDir)}`;
   await mkdir(outDir, { recursive: true });
   const files: DownloadedFile[] = [];
   for (let i = 0; i < urls.length; i++) {

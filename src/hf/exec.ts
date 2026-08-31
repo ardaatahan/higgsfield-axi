@@ -18,10 +18,18 @@ export interface HfRun {
   stderr: string;
 }
 
-/** Run the Higgsfield CLI and resolve with its result, whatever the exit code. */
+/**
+ * Run the Higgsfield CLI and resolve with its result, whatever the exit code.
+ * The vendor's update notice ("A new Higgsfield CLI is available: ...") is
+ * disabled via HIGGSFIELD_NO_UPDATE_CHECK: this tool parses the CLI's stdout
+ * strictly and never wants an interactive nudge in a scripted context.
+ */
 export function runHf(args: string[]): Promise<HfRun> {
   return new Promise((resolve, reject) => {
-    const child = spawn(HF_BIN, args, { stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(HF_BIN, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, HIGGSFIELD_NO_UPDATE_CHECK: "1" },
+    });
     let stdout = "";
     let stderr = "";
     child.stdout.setEncoding("utf8").on("data", (d: string) => (stdout += d));

@@ -5,7 +5,7 @@
 import type { CommandModule } from "../cli/router.js";
 import { UsageError } from "../output/errors.js";
 import { emitKV, emitList, print } from "../output/toon.js";
-import { helpBlock, quoteArg } from "../output/suggest.js";
+import { helpBlock, waitSuggestion } from "../output/suggest.js";
 import { hf } from "../hf/exec.js";
 import { downloadOutputs } from "../hf/download.js";
 import { isFailureStatus, parseJobOutput } from "../hf/job.js";
@@ -40,7 +40,7 @@ export const statusCommand: CommandModule = {
       helpBlock(
         failed
           ? ['higgsfield-axi image "<prompt>" --model <model-id>', 'higgsfield-axi video "<prompt>" --model <model-id>']
-          : [`higgsfield-axi wait ${id} --out ${quoteArg(DEFAULT_OUT_DIR)}`],
+          : [waitSuggestion(id, DEFAULT_OUT_DIR)],
       ),
     );
     return 0;
