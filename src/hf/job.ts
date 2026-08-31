@@ -20,11 +20,20 @@ export function parseJsonLoose(text: string): unknown {
   }
 }
 
-// A job id is only recognizable when it is a primitive: String() on anything
-// else yields a truthy "[object Object]" that would pass for a real id and end
-// up in file names and resume suggestions.
+// A job id ends up as a file name component and inside suggested commands, so
+// it is only recognizable when it is a primitive (String() on anything else
+// yields a truthy "[object Object]") whose characters cannot escape a
+// directory or a shell word.
+const SAFE_JOB_ID = /^[A-Za-z0-9._-]+$/;
+
+export function isSafeJobId(value: string): boolean {
+  return SAFE_JOB_ID.test(value) && value !== "." && value !== "..";
+}
+
 function idField(value: unknown): string {
-  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+  if (typeof value !== "string" && typeof value !== "number") return "";
+  const id = String(value);
+  return isSafeJobId(id) ? id : "";
 }
 
 export function parseJob(data: unknown): JobResult {

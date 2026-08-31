@@ -212,6 +212,23 @@ describe("image generation", () => {
     expect(r.stdout).not.toContain("retry the command");
   });
 
+  it("rejects a job id that could escape the output directory", async () => {
+    const r = await run(["image", "a chair"], {
+      MOCK_HF_JOB_RAW: JSON.stringify({ job_id: "../../evil", status: "completed", urls: ["https://cdn/x.png"] }),
+    });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+    expect(existsSync(join(workDir, "higgsfield-out"))).toBe(false);
+    expect(existsSync(join(workDir, "..", "evil.png"))).toBe(false);
+  });
+
+  it("rejects a job id argument that could escape the output directory", async () => {
+    const r = await run(["wait", "../../evil"]);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toContain("error: invalid job id '../../evil'");
+    expect(invocations()).toHaveLength(0);
+  });
+
   it("rejects a job id that is not a primitive instead of using [object Object]", async () => {
     const r = await run(["image", "a chair", "--no-wait"], {
       MOCK_HF_JOB_RAW: JSON.stringify({ job_id: { value: "abc" }, status: "completed", urls: ["https://cdn/x.png"] }),
@@ -303,7 +320,7 @@ describe("image generation", () => {
 });
 
 describe("video generation", () => {
-  it("defaults to veo3_1 and passes wait-timeout/wait-interval through", async () => {
+  it("rejects wait tuning combined with --no-wait instead of dropping it silently", async () => {
     const r = await run([
       "video",
       "slow pan",
@@ -313,10 +330,16 @@ describe("video generation", () => {
       "5s",
       "--no-wait",
     ]);
+    expect(r.status).toBe(2);
+    expect(r.stdout).toContain("error: --wait-timeout and --wait-interval cannot be combined with --no-wait");
+    expect(r.stdout).toContain("suggestion:");
+    expect(invocations()).toHaveLength(0);
+  });
+
+  it("defaults to veo3_1 and submits without waiting under --no-wait", async () => {
+    const r = await run(["video", "slow pan", "--no-wait"]);
     expect(r.status).toBe(0);
-    const calls = invocations();
-    // --no-wait means neither --wait nor the wait-timeout/interval flags are sent.
-    expect(calls[0]).toEqual(["generate", "create", "veo3_1", "--prompt", "slow pan", "--json"]);
+    expect(invocations()[0]).toEqual(["generate", "create", "veo3_1", "--prompt", "slow pan", "--json"]);
   });
 
   it("passes wait-timeout/wait-interval to the CLI when waiting", async () => {
@@ -409,7 +432,7 @@ describe("job lifecycle commands", () => {
     expect(r.status).toBe(1);
     expect(r.stdout).toContain("error: higgsfield returned a malformed response");
     expect(r.stdout).toContain("not json at all");
-    expect(r.stdout).toContain("retry the command");
+    expect(r.stdout).toContain("`higgsfield generate get job-xyz --json`");
   });
 
   it("suggests a command that actually re-downloads when fetching an output fails", async () => {
@@ -426,6 +449,13 @@ describe("job lifecycle commands", () => {
     } finally {
       await asset?.stop();
     }
+  });
+
+  it("status marks a job with no outputs yet explicitly", async () => {
+    const r = await run(["status", "job-queued"], { MOCK_HF_JOB_STATUS: "queued", MOCK_HF_JOB_URLS: "[]" });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("status: queued");
+    expect(r.stdout).toContain("outputs: 0");
   });
 
   it("status on a failed job suggests re-generating instead of waiting", async () => {
@@ -515,11 +545,11 @@ describe("models", () => {
     expect(r.stdout).toContain("resolution,string,true");
   });
 
-  it("keeps the counted list header when the catalog comes back wrapped in an object", async () => {
+  it("names a wrapped catalog's counted list after the key the CLI used", async () => {
     const r = await run(["models"], {
       MOCK_HF_MODEL_LIST: JSON.stringify({
         total: 2,
-        models: [
+        job_types: [
           { job_type: "nano_banana_2", media: "image" },
           { job_type: "veo3_1", media: "video" },
         ],
@@ -528,7 +558,7 @@ describe("models", () => {
     expect(r.status).toBe(0);
     expect(r.stdout).not.toContain("[object Object]");
     expect(r.stdout).toContain("total: 2");
-    expect(r.stdout).toContain("models[2]{job_type,media}:");
+    expect(r.stdout).toContain("job_types[2]{job_type,media}:");
     expect(r.stdout).toContain("veo3_1,video");
   });
 

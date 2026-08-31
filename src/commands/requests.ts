@@ -3,17 +3,23 @@
 // CLI does not expose one (verified via `higgsfield generate --help`).
 
 import type { CommandModule } from "../cli/router.js";
-import { UsageError } from "../output/errors.js";
+import { UsageError, retryHint } from "../output/errors.js";
 import { emitKV, emitList, print } from "../output/toon.js";
 import { helpBlock, waitSuggestion } from "../output/suggest.js";
 import { hf } from "../hf/exec.js";
 import { downloadOutputs } from "../hf/download.js";
-import { isFailureStatus, parseJobOutput } from "../hf/job.js";
+import { isFailureStatus, isSafeJobId, parseJobOutput } from "../hf/job.js";
 import { DEFAULT_OUT_DIR, renderJobResult } from "./generate.js";
 
 function requireJobId(positionals: string[]): string {
   const id = positionals[0];
   if (!id) throw new UsageError("missing required argument <job-id>");
+  if (!isSafeJobId(id)) {
+    throw new UsageError(
+      `invalid job id '${id}'`,
+      "a job id contains only letters, digits, '.', '-' and '_' - copy it from the id this tool printed when the job was submitted",
+    );
+  }
   return id;
 }
 
@@ -27,15 +33,21 @@ export const statusCommand: CommandModule = {
   },
   async run(parsed) {
     const id = requireJobId(parsed.positionals);
-    const stdout = await hf(["generate", "get", id, "--json"]);
-    const job = parseJobOutput(stdout, { knownId: id });
+    const args = ["generate", "get", id, "--json"];
+    const stdout = await hf(args);
+    const job = parseJobOutput(stdout, {
+      knownId: id,
+      malformedSuggestion: retryHint(`higgsfield ${args.join(" ")}`),
+    });
     const failed = isFailureStatus(job.status);
     const kv: Array<[string, unknown]> = [["job", job.jobId], ["status", job.status]];
     if (failed) kv.push(["job_error", job.status]);
     print(emitKV(kv));
-    if (job.urls.length > 0) {
-      print(emitList("outputs", job.urls.map((url) => ({ url })), ["url"]));
-    }
+    print(
+      job.urls.length > 0
+        ? emitList("outputs", job.urls.map((url) => ({ url })), ["url"])
+        : emitKV([["outputs", 0]]),
+    );
     print(
       helpBlock(
         failed
@@ -69,7 +81,10 @@ export const waitCommand: CommandModule = {
     if (parsed.flags["interval"]) args.push("--interval", String(parsed.flags["interval"]));
     args.push("--quiet", "--json");
     const stdout = await hf(args);
-    const job = parseJobOutput(stdout, { knownId: id });
+    const job = parseJobOutput(stdout, {
+      knownId: id,
+      malformedSuggestion: retryHint(`higgsfield ${args.join(" ")}`),
+    });
     const outDir = String(parsed.flags["out"]);
     const files = !isFailureStatus(job.status) && job.urls.length > 0 ? await downloadOutputs(job.jobId, job.urls, outDir) : [];
     const { text, exitCode } = renderJobResult(job, files);

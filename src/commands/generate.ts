@@ -24,6 +24,8 @@ const COMMON_FLAGS: FlagSpec[] = [
   { name: "out", type: "string", default: DEFAULT_OUT_DIR, description: "directory for downloaded outputs" },
 ];
 
+const WAIT_TUNING_FLAGS = ["wait-timeout", "wait-interval"];
+
 function buildCreateArgs(model: string, prompt: string, parsed: Parsed): string[] {
   const args = ["generate", "create", model, "--prompt", prompt];
   for (const { name, value } of parsed.passthrough) {
@@ -75,6 +77,15 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
     );
   }
   const prompt = parsed.positionals[0]!;
+  if (parsed.flags["no-wait"]) {
+    const tuning = WAIT_TUNING_FLAGS.filter((name) => parsed.flags[name] !== undefined);
+    if (tuning.length > 0) {
+      throw new UsageError(
+        `${tuning.map((name) => `--${name}`).join(" and ")} cannot be combined with --no-wait`,
+        `drop --no-wait to wait with that tuning, or drop ${tuning.map((name) => `--${name}`).join("/")} to submit without waiting`,
+      );
+    }
+  }
   const outDir = String(parsed.flags["out"]);
   const stdout = await hf(buildCreateArgs(model, prompt, parsed));
   const job = parseJobOutput(stdout, { malformedSuggestion: CREATE_RECOVERY });
