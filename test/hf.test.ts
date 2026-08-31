@@ -498,6 +498,19 @@ describe("job lifecycle commands", () => {
     expect(r.stdout).toContain("`higgsfield generate get job-xyz --json`");
   });
 
+  it("keeps the job id and a resume step when the output directory cannot be created", async () => {
+    const notADir = join(workDir, "notes.txt");
+    writeFileSync(notADir, "not a directory");
+    const r = await run(["wait", "job-x", "--out", notADir], {
+      MOCK_HF_JOB_URLS: JSON.stringify(["https://cdn.example.com/x.png"]),
+    });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain(`error: creating the output directory ${notADir} failed:`);
+    expect(r.stdout).toContain(`suggestion: re-fetch outputs with: higgsfield-axi wait job-x --out '${notADir}'`);
+    expect(r.stdout).not.toContain("unexpected failure");
+    expect(r.stderr).toBe("");
+  });
+
   it("suggests a command that actually re-downloads when fetching an output fails", async () => {
     let asset: AssetServer | undefined;
     try {

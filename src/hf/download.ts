@@ -22,6 +22,10 @@ export interface DownloadedFile {
   bytes: number;
 }
 
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function extFromUrl(url: string): string | null {
   try {
     const pathname = new URL(url).pathname;
@@ -39,7 +43,11 @@ export async function downloadOutputs(
 ): Promise<DownloadedFile[]> {
   if (urls.length === 0) return [];
   const retry = `re-fetch outputs with: ${waitSuggestion(jobId, outDir)}`;
-  await mkdir(outDir, { recursive: true });
+  try {
+    await mkdir(outDir, { recursive: true });
+  } catch (err) {
+    throw new AxiError(`creating the output directory ${outDir} failed: ${errorMessage(err)}`, retry);
+  }
   const files: DownloadedFile[] = [];
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i]!;
@@ -47,11 +55,7 @@ export async function downloadOutputs(
     try {
       res = await fetch(url);
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      throw new AxiError(
-        `downloading output ${i + 1} failed: ${message}`,
-        retry,
-      );
+      throw new AxiError(`downloading output ${i + 1} failed: ${errorMessage(err)}`, retry);
     }
     if (!res.ok) {
       throw new AxiError(
@@ -64,7 +68,11 @@ export async function downloadOutputs(
     const suffix = urls.length > 1 ? `-${i + 1}` : "";
     const path = join(outDir, `${jobId}${suffix}${ext}`);
     const buf = Buffer.from(await res.arrayBuffer());
-    await writeFile(path, buf);
+    try {
+      await writeFile(path, buf);
+    } catch (err) {
+      throw new AxiError(`writing output ${i + 1} to ${path} failed: ${errorMessage(err)}`, retry);
+    }
     files.push({ path, bytes: buf.length });
   }
   return files;
