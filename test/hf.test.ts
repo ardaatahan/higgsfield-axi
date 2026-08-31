@@ -110,11 +110,19 @@ describe("image generation", () => {
     const r = await run(["image", "a chair", "--no-wait"], { MOCK_HF_JOB_ID: "job-nowait" });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("job: job-nowait");
-    expect(r.stdout).toContain(`higgsfield-axi wait job-nowait`);
+    expect(r.stdout).toContain("higgsfield-axi wait job-nowait --out higgsfield-out");
 
     const calls = invocations();
     expect(calls[0]).toEqual(["generate", "create", "nano_banana_2", "--prompt", "a chair", "--json"]);
     expect(calls[0]).not.toContain("--wait");
+  });
+
+  it("--no-wait suggests resuming into the same --out directory the user asked for", async () => {
+    const r = await run(["image", "a chair", "--no-wait", "--out", "./assets"], {
+      MOCK_HF_JOB_ID: "job-outdir",
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("higgsfield-axi wait job-outdir --out ./assets");
   });
 
   it("uses --model to override the default and forwards unknown flags to the CLI verbatim", async () => {
@@ -227,7 +235,7 @@ describe("image generation", () => {
     });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("outputs: 0");
-    expect(r.stdout).toContain("higgsfield-axi wait job-empty");
+    expect(r.stdout).toContain("higgsfield-axi wait job-empty --out higgsfield-out");
     expect(r.stdout).toContain("higgsfield-axi status job-empty");
     expect(r.stdout).not.toContain('higgsfield-axi image "<prompt>"');
   });

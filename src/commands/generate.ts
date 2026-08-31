@@ -38,8 +38,8 @@ function buildCreateArgs(model: string, prompt: string, parsed: Parsed): string[
   return args;
 }
 
-function nextStepsAfterSubmit(jobId: string): string[] {
-  return [`higgsfield-axi wait ${jobId}`, `higgsfield-axi status ${jobId}`];
+function nextStepsAfterSubmit(jobId: string, outDir: string): string[] {
+  return [`higgsfield-axi wait ${jobId} --out ${outDir}`, `higgsfield-axi status ${jobId}`];
 }
 
 /** Shared by image/video submission and the `wait` command's terminal report. */
@@ -71,7 +71,7 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
 
   if (parsed.flags["no-wait"]) {
     print(emitKV([["job", job.jobId], ["model", model], ["status", job.status]]));
-    print(helpBlock(nextStepsAfterSubmit(job.jobId)));
+    print(helpBlock(nextStepsAfterSubmit(job.jobId, outDir)));
     return 0;
   }
 
@@ -83,7 +83,7 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
     print(
       helpBlock(
         noOutputs
-          ? nextStepsAfterSubmit(job.jobId)
+          ? nextStepsAfterSubmit(job.jobId, outDir)
           : [`higgsfield-axi ${kind} "<prompt>" --model ${model}`, "higgsfield-axi models --kind " + kind],
       ),
     );
