@@ -203,6 +203,25 @@ describe("image generation", () => {
     expect(r.stdout).not.toContain("status: unknown");
   });
 
+  it("never advises resubmitting a billed generation when the create response is unreadable", async () => {
+    const r = await run(["image", "a chair"], { MOCK_HF_JOB_RAW: "Submitted." });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+    expect(r.stdout).toContain("do not resubmit the same prompt");
+    expect(r.stdout).toContain("higgsfield generate list");
+    expect(r.stdout).not.toContain("retry the command");
+  });
+
+  it("rejects a job id that is not a primitive instead of using [object Object]", async () => {
+    const r = await run(["image", "a chair", "--no-wait"], {
+      MOCK_HF_JOB_RAW: JSON.stringify({ job_id: { value: "abc" }, status: "completed", urls: ["https://cdn/x.png"] }),
+    });
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+    expect(r.stdout).not.toContain("[object Object]");
+    expect(existsSync(join(workDir, "higgsfield-out"))).toBe(false);
+  });
+
   it("accepts one clean JSON job document and rejects every other stdout shape alike", async () => {
     const job = { job_id: "job-clean", status: "queued" };
     const clean = await run(["image", "a chair", "--no-wait"], {
@@ -390,6 +409,7 @@ describe("job lifecycle commands", () => {
     expect(r.status).toBe(1);
     expect(r.stdout).toContain("error: higgsfield returned a malformed response");
     expect(r.stdout).toContain("not json at all");
+    expect(r.stdout).toContain("retry the command");
   });
 
   it("suggests a command that actually re-downloads when fetching an output fails", async () => {
@@ -542,6 +562,14 @@ describe("models", () => {
     }
   });
 
+  it("renders a null catalog as an empty result, not a one-entry catalog", async () => {
+    const r = await run(["models", "--kind", "audio"], { MOCK_HF_MODEL_LIST: "null" });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain("models[0]:");
+    expect(r.stdout).not.toContain("models[1]");
+    expect(r.stdout).not.toContain("null");
+  });
+
   it("rejects non-JSON and empty catalog output instead of reporting it as a catalog", async () => {
     const cases = [
       { args: ["models"], env: { MOCK_HF_MODEL_LIST: "A new Higgsfield CLI is available: 1.1.24 -> 1.2.0" } },
@@ -641,6 +669,8 @@ describe("no-args home view", () => {
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("higgsfield-cli: not installed");
     expect(r.stdout).toContain("npm install -g @higgsfield/cli");
+    expect(r.stdout).toMatch(/(^|\n)help\[/);
+    expect(r.stdout).toContain("higgsfield-axi models");
     expect(invocations()).toHaveLength(0);
   });
 

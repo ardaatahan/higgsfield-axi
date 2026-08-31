@@ -39,6 +39,9 @@ function buildCreateArgs(model: string, prompt: string, parsed: Parsed): string[
   return args;
 }
 
+const CREATE_RECOVERY =
+  "the job may already have been created and billed - do not resubmit the same prompt; find it with `higgsfield generate list`, then run `higgsfield-axi wait <job-id>` or `higgsfield-axi status <job-id>`";
+
 function nextStepsAfterSubmit(jobId: string, outDir: string): string[] {
   return [waitSuggestion(jobId, outDir), `higgsfield-axi status ${jobId}`];
 }
@@ -74,7 +77,7 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
   const prompt = parsed.positionals[0]!;
   const outDir = String(parsed.flags["out"]);
   const stdout = await hf(buildCreateArgs(model, prompt, parsed));
-  const job = parseJobOutput(stdout);
+  const job = parseJobOutput(stdout, { malformedSuggestion: CREATE_RECOVERY });
 
   if (parsed.flags["no-wait"]) {
     print(emitKV([["job", job.jobId], ["model", model], ["status", job.status]]));

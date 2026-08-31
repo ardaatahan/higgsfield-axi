@@ -26,14 +26,18 @@ export function renderError(err: AxiError): string {
 
 const RAW_PREVIEW_LIMIT = 300;
 
+/** Recovery for a read-only vendor call, where retrying costs nothing. */
+export function retryHint(vendorCommand: string): string {
+  return `retry the command; if it persists, run the same \`${vendorCommand}\` command directly to inspect its output`;
+}
+
 /**
  * The CLI printed something this tool cannot read. The raw text travels in the
- * error rather than being smoothed into a plausible-looking success.
+ * error rather than being smoothed into a plausible-looking success. The
+ * caller supplies the recovery, since retrying is only safe for read-only
+ * calls.
  */
-export function malformedResponse(stdout: string, vendorCommand: string): AxiError {
+export function malformedResponse(stdout: string, suggestion: string): AxiError {
   const raw = stdout.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
-  return new AxiError(
-    `higgsfield returned a malformed response: ${raw || "(no output)"}`,
-    `retry the command; if it persists, run the same \`${vendorCommand}\` command directly to inspect its output`,
-  );
+  return new AxiError(`higgsfield returned a malformed response: ${raw || "(no output)"}`, suggestion);
 }

@@ -2,7 +2,7 @@
 // not JSON is rejected rather than wrapped as if it were catalog data, the
 // same rule src/hf/job.ts applies to job payloads.
 
-import { malformedResponse } from "./errors.js";
+import { malformedResponse, retryHint } from "./errors.js";
 import { emitBlock, emitKV, emitList } from "./toon.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -28,7 +28,7 @@ export function emitFromJson(name: string, raw: string, vendorCommand: string): 
   try {
     data = JSON.parse(raw.trim());
   } catch {
-    throw malformedResponse(raw, vendorCommand);
+    throw malformedResponse(raw, retryHint(vendorCommand));
   }
   if (Array.isArray(data)) {
     return emitRows(name, data);
@@ -43,5 +43,6 @@ export function emitFromJson(name: string, raw: string, vendorCommand: string): 
     const parts = scalars.length > 0 ? [emitKV(scalars), ...blocks] : blocks;
     return parts.length > 0 ? parts.join("\n") : emitKV([[name, ""]]);
   }
+  if (data === null) return emitBlock(name, []);
   return emitBlock(name, [String(data)]);
 }

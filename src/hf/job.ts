@@ -3,7 +3,7 @@
 // does not document this shape; the field names below (job_id, status,
 // result_url, urls) come from the compiled binary's own JSON tags.
 
-import { AxiError, malformedResponse } from "../output/errors.js";
+import { AxiError, malformedResponse, retryHint } from "../output/errors.js";
 
 export interface JobResult {
   jobId: string;
@@ -20,10 +20,17 @@ export function parseJsonLoose(text: string): unknown {
   }
 }
 
+// A job id is only recognizable when it is a primitive: String() on anything
+// else yields a truthy "[object Object]" that would pass for a real id and end
+// up in file names and resume suggestions.
+function idField(value: unknown): string {
+  return typeof value === "string" || typeof value === "number" ? String(value) : "";
+}
+
 export function parseJob(data: unknown): JobResult {
   const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
-  const jobId = String(obj["job_id"] ?? obj["id"] ?? "");
-  const status = String(obj["status"] ?? "unknown");
+  const jobId = idField(obj["job_id"]) || idField(obj["id"]);
+  const status = typeof obj["status"] === "string" ? obj["status"] : "unknown";
   const urls: string[] = [];
   if (Array.isArray(obj["urls"])) {
     for (const u of obj["urls"] as unknown[]) if (typeof u === "string") urls.push(u);
@@ -42,7 +49,18 @@ export function parseJob(data: unknown): JobResult {
  * success; the raw text travels in the error so the caller can see what came
  * back.
  */
-export function parseJobOutput(stdout: string, knownId?: string): JobResult {
+export interface ParseJobOptions {
+  /** The id `status`/`wait` already know, used when the payload omits its own. */
+  knownId?: string;
+  /**
+   * Recovery when the payload cannot be read. Defaults to advising a retry,
+   * which is wrong for a non-idempotent call like `generate create`.
+   */
+  malformedSuggestion?: string;
+}
+
+export function parseJobOutput(stdout: string, opts: ParseJobOptions = {}): JobResult {
+  const { knownId, malformedSuggestion } = opts;
   const data = parseJsonLoose(stdout);
   if (data && typeof data === "object" && !Array.isArray(data)) {
     const record = data as Record<string, unknown>;
@@ -58,7 +76,7 @@ export function parseJobOutput(stdout: string, knownId?: string): JobResult {
       return { ...job, jobId: knownId };
     }
   }
-  throw malformedResponse(stdout, "higgsfield generate");
+  throw malformedResponse(stdout, malformedSuggestion ?? retryHint("higgsfield generate"));
 }
 
 // The CLI does not publish a status enum, so failure is detected by keyword

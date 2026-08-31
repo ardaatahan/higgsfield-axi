@@ -44,7 +44,8 @@ export function homeBody(tool: string, status: CliStatus): string {
     // AXI tooling that discovers subcommands from help[] blocks would
     // otherwise mistake e.g. "install" for a subcommand of this tool.
     const fix = fixBlock(["npm install -g @higgsfield/cli", "brew install higgsfield-ai/tap/higgsfield"]);
-    return [facts, fix].join("\n");
+    const help = helpBlock([`${tool} models`, `${tool} image "<prompt>" --model ${DEFAULT_MODELS.image}`]);
+    return [facts, fix, help].join("\n");
   }
   if (!status.authenticated) {
     const fix = fixBlock(["higgsfield auth login"]);
