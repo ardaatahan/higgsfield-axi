@@ -15,7 +15,7 @@ import { isFailureStatus, parseJobOutput } from "../hf/job.js";
 export const DEFAULT_OUT_DIR = "higgsfield-out";
 
 const PASSTHROUGH_HINT =
-  "any other --flag value is forwarded to `higgsfield generate create <model>` (e.g. --aspect_ratio, --resolution, --duration, --image-references, --start-image, --end-image); inspect a model's accepted parameters with `higgsfield-axi models <model-id>`";
+  "any other --flag value is forwarded to `higgsfield generate create <model>` (e.g. --aspect_ratio, --resolution, --duration, --image-references, --start-image, --end-image), except --prompt, --wait and --json, which higgsfield-axi sets itself and rejects if passed; inspect a model's accepted parameters with `higgsfield-axi models <model-id>`";
 
 const COMMON_FLAGS: FlagSpec[] = [
   { name: "wait-timeout", type: "string", description: "max wait duration while polling, e.g. 20m (default 10m)" },

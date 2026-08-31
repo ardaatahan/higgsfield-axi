@@ -26,6 +26,6 @@ help[4]:
   npx -y higgsfield-axi wait <job-id>
 ```
 
-`image`/`video` shell out to `higgsfield generate create <model> --prompt ...`, wait for completion by default, download outputs, and print local file paths (`--no-wait` to just get the job id back). Any flag not shown in `--help` is forwarded verbatim to that underlying call (e.g. `--aspect_ratio`, `--resolution`, `--image-references`, `--duration`) - inspect a model's accepted parameters with `higgsfield-axi models <model-id>` or `higgsfield model get <model-id>`.
+`image`/`video` shell out to `higgsfield generate create <model> --prompt ...`, wait for completion by default, download outputs, and print local file paths (`--no-wait` to just get the job id back). Any flag not shown in `--help` is forwarded verbatim to that underlying call (e.g. `--aspect_ratio`, `--resolution`, `--image-references`, `--duration`), except `--prompt`, `--wait` and `--json`, which higgsfield-axi sets itself and rejects if passed - inspect a model's accepted parameters with `higgsfield-axi models <model-id>` or `higgsfield model get <model-id>`.
 
 Every command supports `--help`. Exit codes: 0 success/no-op, 1 error, 2 usage error. All output is TOON on stdout. There is no `cancel` command - the underlying Higgsfield CLI does not expose one.

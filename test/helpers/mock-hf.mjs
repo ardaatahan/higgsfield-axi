@@ -28,6 +28,15 @@ function fail(message, hint, code) {
   process.exit(code);
 }
 
+// MOCK_HF_CRASH stands in for the vendor binary panicking or its npm shim
+// failing: a raw multi-line stack on stderr with no "Error:" line, exit 1.
+if (process.env.MOCK_HF_CRASH === "1") {
+  process.stderr.write(
+    "node:internal/modules/cjs/loader:1147\n    throw err;\n    ^\n\nError\n    at Object.<anonymous> (/x/run.js:1:1)\n    at Module._compile (node:internal/modules/cjs/loader:1105:14)\n",
+  );
+  process.exit(1);
+}
+
 const [cmd, sub, ...rest] = args;
 
 if (cmd === "version") {

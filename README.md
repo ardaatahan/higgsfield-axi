@@ -66,7 +66,7 @@ higgsfield-axi image "product shot" --model gpt_image_2 --quality high --no-wait
 
 The prompt must come first, before any flags: an unrecognized flag is forwarded verbatim and takes the next token as its value, so `higgsfield-axi image --enhance_prompt "a red chair"` would forward the prompt as that flag's value and report a missing prompt.
 
-Flags: `--model` (default `nano_banana_2`), `--wait-timeout`, `--wait-interval`, `--no-wait`, `--out`. Any other `--flag value` is forwarded verbatim to `higgsfield generate create <model>` - that covers per-model parameters like `--aspect_ratio`, `--resolution`, `--duration`, `--mode`, and media flags like `--image-references`, `--start-image`, `--end-image` (local file paths are uploaded automatically by the underlying CLI). Inspect what a model accepts with `higgsfield-axi models <model-id>`.
+Flags: `--model` (default `nano_banana_2`), `--wait-timeout`, `--wait-interval`, `--no-wait`, `--out`. Any other `--flag value` is forwarded verbatim to `higgsfield generate create <model>` - that covers per-model parameters like `--aspect_ratio`, `--resolution`, `--duration`, `--mode`, and media flags like `--image-references`, `--start-image`, `--end-image` (local file paths are uploaded automatically by the underlying CLI). `--prompt`, `--wait` and `--json` are the exception: higgsfield-axi sets those on the underlying call itself and rejects them as passthrough. Inspect what a model accepts with `higgsfield-axi models <model-id>`.
 
 ### `higgsfield-axi video <prompt>`
 

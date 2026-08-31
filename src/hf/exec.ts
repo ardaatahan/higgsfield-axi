@@ -4,7 +4,7 @@
 // here instead of calling api.higgsfield.ai directly.
 
 import { spawn } from "node:child_process";
-import { AxiError } from "../output/errors.js";
+import { AxiError, oneLine } from "../output/errors.js";
 
 /** Test-only override so the offline suite can point at a mocked binary. */
 export const HF_BIN = process.env["HIGGSFIELD_AXI_BIN"] || "higgsfield";
@@ -76,7 +76,9 @@ function parseHfError(stderr: string, code: number): HfExitError {
     .filter(Boolean);
   const errLine = lines.find((l) => l.startsWith("Error:"));
   const hintLine = lines.find((l) => l.startsWith("Hint:"));
-  const message = errLine ? errLine.replace(/^Error:\s*/, "") : stderr.trim() || `higgsfield exited with code ${code}`;
+  const message = errLine
+    ? errLine.replace(/^Error:\s*/, "")
+    : oneLine(stderr) || `higgsfield exited with code ${code}`;
   const suggestion = hintLine ? rewriteHint(hintLine.replace(/^Hint:\s*/, "")) : undefined;
   return new HfExitError(message, suggestion);
 }

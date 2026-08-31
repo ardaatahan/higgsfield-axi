@@ -756,6 +756,17 @@ describe("environment and error mapping", () => {
     expect(invocations()).toHaveLength(0);
   });
 
+  it("keeps a crashing CLI's multi-line stderr on one structured error line", async () => {
+    const r = await run(["image", "a chair"], { MOCK_HF_CRASH: "1" });
+    expect(r.status).toBe(1);
+    const lines = r.stdout.split("\n").filter((l) => l.length > 0);
+    expect(lines.every((l) => /^[a-z_]+(\[\d+\])?[:{]/.test(l) || l.startsWith("  "))).toBe(true);
+    const errorLines = lines.filter((l) => l.startsWith("error:"));
+    expect(errorLines).toHaveLength(1);
+    expect(errorLines[0]).toContain("at Object.<anonymous> (/x/run.js:1:1)");
+    expect(r.stdout).not.toContain("\n    at ");
+  });
+
   it("maps 'no workspace selected' from the CLI to a clear fix", async () => {
     const r = await run(["models"], { MOCK_HF_FAIL_WORKSPACE: "1" });
     expect(r.status).toBe(1);

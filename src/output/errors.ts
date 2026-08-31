@@ -26,6 +26,11 @@ export function renderError(err: AxiError): string {
 
 const RAW_PREVIEW_LIMIT = 300;
 
+/** Collapses text to one truncated line, so it can sit on a TOON key line. */
+export function oneLine(text: string): string {
+  return text.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
+}
+
 /** Recovery for a read-only vendor call, where retrying costs nothing. */
 export function retryHint(vendorCommand: string): string {
   return `retry the command; if it persists, run the same \`${vendorCommand}\` command directly to inspect its output`;
@@ -38,6 +43,6 @@ export function retryHint(vendorCommand: string): string {
  * calls.
  */
 export function malformedResponse(stdout: string, suggestion: string): AxiError {
-  const raw = stdout.trim().replace(/\s+/g, " ").slice(0, RAW_PREVIEW_LIMIT);
+  const raw = oneLine(stdout);
   return new AxiError(`higgsfield returned a malformed response: ${raw || "(no output)"}`, suggestion);
 }
