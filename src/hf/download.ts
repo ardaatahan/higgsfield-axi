@@ -43,13 +43,11 @@ export async function downloadOutputs(
 ): Promise<DownloadedFile[]> {
   if (urls.length === 0) return [];
   const retry = `re-fetch outputs with: ${waitSuggestion(jobId, outDir)}`;
+  const retryElsewhere = `--out must name a writable directory; once it does, re-fetch outputs with: higgsfield-axi wait ${jobId} --out <writable-dir>`;
   try {
     await mkdir(outDir, { recursive: true });
   } catch (err) {
-    throw new AxiError(
-      `creating the output directory ${outDir} failed: ${errorMessage(err)}`,
-      `--out must name a writable directory; once it does, re-fetch outputs with: higgsfield-axi wait ${jobId} --out <writable-dir>`,
-    );
+    throw new AxiError(`creating the output directory ${outDir} failed: ${errorMessage(err)}`, retryElsewhere);
   }
   const files: DownloadedFile[] = [];
   for (let i = 0; i < urls.length; i++) {
@@ -74,7 +72,7 @@ export async function downloadOutputs(
     try {
       await writeFile(path, buf);
     } catch (err) {
-      throw new AxiError(`writing output ${i + 1} to ${path} failed: ${errorMessage(err)}`, retry);
+      throw new AxiError(`writing output ${i + 1} to ${path} failed: ${errorMessage(err)}`, retryElsewhere);
     }
     files.push({ path, bytes: buf.length });
   }

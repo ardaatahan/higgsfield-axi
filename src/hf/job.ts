@@ -36,6 +36,13 @@ function idField(value: unknown): string {
   return isSafeJobId(id) ? id : "";
 }
 
+function parsePayload(stdout: string, tolerateLeadingOutput: boolean): unknown {
+  const strict = parseJsonLoose(stdout);
+  if (strict !== undefined || !tolerateLeadingOutput) return strict;
+  const start = stdout.indexOf("{");
+  return start >= 0 ? parseJsonLoose(stdout.slice(start)) : undefined;
+}
+
 export function parseJob(data: unknown): JobResult {
   const obj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   const jobId = idField(obj["job_id"]) || idField(obj["id"]);
@@ -62,6 +69,12 @@ export interface ParseJobOptions {
   /** The id `status`/`wait` already know, used when the payload omits its own. */
   knownId?: string;
   /**
+   * Parse from the first `{` when the whole text is not JSON. Only for
+   * `generate create --wait`, the one call with no `--quiet` to suppress the
+   * vendor's progress output; everywhere else the whole stdout must be JSON.
+   */
+  tolerateLeadingOutput?: boolean;
+  /**
    * Recovery when the payload cannot be read. Defaults to advising a retry,
    * which is wrong for a non-idempotent call like `generate create`.
    */
@@ -69,8 +82,8 @@ export interface ParseJobOptions {
 }
 
 export function parseJobOutput(stdout: string, opts: ParseJobOptions = {}): JobResult {
-  const { knownId, malformedSuggestion } = opts;
-  const data = parseJsonLoose(stdout);
+  const { knownId, malformedSuggestion, tolerateLeadingOutput } = opts;
+  const data = parsePayload(stdout, tolerateLeadingOutput === true);
   if (data && typeof data === "object" && !Array.isArray(data)) {
     const record = data as Record<string, unknown>;
     const job = parseJob(record);

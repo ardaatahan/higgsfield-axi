@@ -4,7 +4,7 @@
 // real CLI.
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -237,6 +237,35 @@ describe("image generation", () => {
     expect(r.stdout).toContain("error: higgsfield returned a malformed response");
     expect(r.stdout).not.toContain("[object Object]");
     expect(existsSync(join(workDir, "higgsfield-out"))).toBe(false);
+  });
+
+  it("parses the create+wait response behind the vendor's progress output", async () => {
+    let asset: AssetServer | undefined;
+    try {
+      asset = new AssetServer();
+      const base = await asset.start();
+      const png = Buffer.from("behind-progress");
+      asset.set("/out.png", "image/png", png);
+      const job = { job_id: "job-noisy", status: "completed", urls: [`${base}/out.png`] };
+      const r = await run(["image", "a chair"], {
+        MOCK_HF_JOB_RAW: `Submitting job...\nWaiting for job (10%)\n${JSON.stringify(job)}\n`,
+      });
+      expect(r.status).toBe(0);
+      expect(r.stdout).toContain("job: job-noisy");
+      expect(r.stdout).toContain("files[1]{path,bytes}:");
+      expect(readFileSync(join(workDir, "higgsfield-out", "job-noisy.png"))).toEqual(png);
+    } finally {
+      await asset?.stop();
+    }
+  });
+
+  it("keeps strict parsing for status and wait, which can silence progress output", async () => {
+    const raw = `Waiting for job (10%)\n${JSON.stringify({ job_id: "job-xyz", status: "completed" })}`;
+    for (const args of [["status", "job-xyz"], ["wait", "job-xyz"]]) {
+      const r = await run(args, { MOCK_HF_JOB_RAW: raw });
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain("error: higgsfield returned a malformed response");
+    }
   });
 
   it("accepts one clean JSON job document and rejects every other stdout shape alike", async () => {
@@ -512,6 +541,29 @@ describe("job lifecycle commands", () => {
     expect(suggestion).not.toContain(notADir);
     expect(r.stdout).not.toContain("unexpected failure");
     expect(r.stderr).toBe("");
+  });
+
+  it("keeps the job id and points elsewhere when the output directory is not writable", async () => {
+    let asset: AssetServer | undefined;
+    const readOnly = join(workDir, "read-only");
+    try {
+      asset = new AssetServer();
+      const base = await asset.start();
+      asset.set("/out.png", "image/png", Buffer.from("bytes"));
+      mkdirSync(readOnly, { mode: 0o500 });
+      const r = await run(["wait", "job-ro", "--out", readOnly], {
+        MOCK_HF_JOB_URLS: JSON.stringify([`${base}/out.png`]),
+      });
+      expect(r.status).toBe(1);
+      expect(r.stdout).toContain("error: writing output 1 to");
+      const suggestion = r.stdout.split("\n").find((l) => l.startsWith("suggestion:"))!;
+      expect(suggestion).toContain("higgsfield-axi wait job-ro");
+      expect(suggestion).not.toContain(readOnly);
+      expect(r.stdout).not.toContain("unexpected failure");
+    } finally {
+      chmodSync(readOnly, 0o700);
+      await asset?.stop();
+    }
   });
 
   it("suggests a command that actually re-downloads when fetching an output fails", async () => {

@@ -7,9 +7,10 @@ export function print(text: string): void {
 
 export function toonValue(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const s = String(value);
-  if (/[,"\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
-  return s;
+  const raw = String(value);
+  const escaped = raw.replace(/\r/g, "\\r").replace(/\n/g, "\\n");
+  if (/[,"]/.test(escaped) || escaped !== raw) return '"' + escaped.replace(/"/g, '""') + '"';
+  return escaped;
 }
 
 export function emitList(

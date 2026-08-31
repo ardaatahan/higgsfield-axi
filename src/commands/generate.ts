@@ -113,7 +113,10 @@ async function submitAndReport(kind: "image" | "video", model: string, parsed: P
   }
   const outDir = String(parsed.flags["out"]);
   const stdout = await submitJob(model, prompt, parsed);
-  const job = parseJobOutput(stdout, { malformedSuggestion: CREATE_RECOVERY });
+  const job = parseJobOutput(stdout, {
+    malformedSuggestion: CREATE_RECOVERY,
+    tolerateLeadingOutput: !parsed.flags["no-wait"],
+  });
 
   if (parsed.flags["no-wait"]) {
     print(emitKV([["job", job.jobId], ["model", model], ["status", job.status]]));
